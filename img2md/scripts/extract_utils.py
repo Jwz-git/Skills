@@ -1,197 +1,121 @@
 #!/usr/bin/env python3
-"""
-图片裁剪与打包工具 - 用于 img2md skill
-提供两个主要功能：
-1. crop: 从输入图片中裁剪出指定区域，并保存到指定位置（通常是 img/ 目录）。
-   坐标系通过 --coords 显式指定，避免小于 1000 的像素值被误判为归一化坐标。
-2. zip: 将 Markdown 文件和同级的 img/ 目录整体打包为 ZIP 文件。
-"""
+"""裁剪图片中的视觉元素，或把 Markdown 与同级 img/ 目录打包为 ZIP。"""
 
+from __future__ import annotations
+
+import argparse
+import math
 import os
 import sys
 import zipfile
 from pathlib import Path
 
+# 允许以 python3 -I 运行：隔离模式不会把脚本目录加入 sys.path。
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-def _load_pillow():
-    """加载 Pillow；缺失时给出可执行提示，但不擅自修改环境。"""
-    try:
-        from PIL import Image
-    except ImportError as exc:
-        raise RuntimeError(
-            "缺少 Pillow。请在当前 Python 环境中运行: "
-            f"{sys.executable} -m pip install Pillow"
-        ) from exc
-    return Image
+SCALES = {"pixels": None, "unit": 1.0, "thousand": 1000.0}
 
 
-def _to_pixels(coords, width, height, coordinate_system):
-    """将指定坐标系中的矩形转换为像素坐标。"""
+def to_pixel_box(coords, width, height, coordinate_system):
+    """把指定坐标系中的矩形换算为像素框；左上取下整、右下取上整。"""
+    if coordinate_system not in SCALES:
+        raise ValueError(f"未知坐标系 {coordinate_system!r}；可选值: {', '.join(SCALES)}")
     left, top, right, bottom = coords
-    limits = {
-        "pixels": None,
-        "unit": 1.0,
-        "thousand": 1000.0,
-    }
-    if coordinate_system not in limits:
-        raise ValueError(
-            f"未知坐标系 {coordinate_system!r}；可选值: pixels, unit, thousand"
-        )
-
-    scale = limits[coordinate_system]
+    scale = SCALES[coordinate_system]
     if scale is None:
-        return tuple(int(value) for value in coords)
-
-    if not all(0.0 <= value <= scale for value in coords):
-        raise ValueError(
-            f"{coordinate_system} 坐标必须全部位于 0 到 {scale:g} 之间"
-        )
-
+        if not (0 <= left < right <= width and 0 <= top < bottom <= height):
+            raise ValueError(
+                f"像素坐标必须满足 0 ≤ left < right ≤ {width} 且 0 ≤ top < bottom ≤ {height}"
+            )
+    else:
+        if not (0 <= left < right <= scale and 0 <= top < bottom <= scale):
+            raise ValueError(
+                f"{coordinate_system} 坐标必须满足 0 ≤ left < right ≤ {scale:g} 且 0 ≤ top < bottom ≤ {scale:g}"
+            )
+        left, right = left / scale * width, right / scale * width
+        top, bottom = top / scale * height, bottom / scale * height
     return (
-        int(left / scale * width),
-        int(top / scale * height),
-        int(right / scale * width),
-        int(bottom / scale * height),
+        math.floor(left),
+        math.floor(top),
+        min(math.ceil(right), width),
+        min(math.ceil(bottom), height),
     )
 
 
-def crop_image(
-    image_path,
-    output_path,
-    left,
-    top,
-    right,
-    bottom,
-    coordinate_system="pixels",
-):
-    """
-    裁剪图片指定区域并保存
-    """
-    Image = _load_pillow()
+def crop_image(image_path, output_path, left, top, right, bottom, coordinate_system, page=1):
+    """按与 prepare_image.py 相同的规则摆正并规范化图片后裁剪，返回像素框。"""
+    import image_io  # 延迟导入，使 zip 不依赖 Pillow
 
-    image_path = Path(image_path).resolve()
-    output_path = Path(output_path).resolve()
+    source = Path(image_path).expanduser().resolve()
+    target = Path(output_path).expanduser().resolve()
+    if not source.is_file():
+        raise FileNotFoundError(f"输入图片不存在或不是文件: {source}")
+    if target.suffix.lower() not in image_io.ASSET_SUFFIXES:
+        raise ValueError("输出文件扩展名必须是 .png、.jpg 或 .jpeg")
 
-    if not image_path.is_file():
-        raise FileNotFoundError(f"输入图片不存在或不是文件: {image_path}")
+    with image_io.open_image(source) as image:
+        frames = image_io.frame_count(image)
+        if not 1 <= page <= frames:
+            raise ValueError(f"--page 必须在 1 到 {frames} 之间")
+        frame = image_io.read_frame(image, page - 1).image
 
-    # 自动创建输出目录
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with Image.open(image_path) as img:
-        width, height = img.size
-        left_px, top_px, right_px, bottom_px = _to_pixels(
-            (left, top, right, bottom), width, height, coordinate_system
-        )
-
-        # 像素坐标允许越界输入，并裁剪到图像边界。
-        left_px = max(0, min(left_px, width))
-        top_px = max(0, min(top_px, height))
-        right_px = max(0, min(right_px, width))
-        bottom_px = max(0, min(bottom_px, height))
-
-        if left_px >= right_px or top_px >= bottom_px:
-            raise ValueError(
-                f"无效的裁剪范围 ({left_px}, {top_px}, {right_px}, {bottom_px})"
-            )
-
-        cropped = img.crop((left_px, top_px, right_px, bottom_px))
-        # 输出固定为 PNG，避免 OCR 素材再次产生有损压缩。
-        cropped.save(output_path, "PNG")
-    print(f"已成功裁剪区域并保存至: {output_path}")
+    box = to_pixel_box((left, top, right, bottom), *frame.size, coordinate_system)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    image_io.save_asset(frame.crop(box), target)
+    return box
 
 
 def package_zip(md_path, zip_path=None):
-    """
-    将 Markdown 文件和同级的 img/ 目录打包为 ZIP
-    """
-    md_path = Path(md_path).resolve()
+    """把 Markdown 放在 ZIP 根目录，并保留同级 img/ 的相对路径。"""
+    md_path = Path(md_path).expanduser().resolve()
     if not md_path.is_file():
         raise FileNotFoundError(f"Markdown 文件不存在或不是文件: {md_path}")
-
-    if zip_path is None:
-        zip_path = md_path.with_suffix(".zip")
-    else:
-        zip_path = Path(zip_path).resolve()
+    zip_path = md_path.with_suffix(".zip") if zip_path is None else Path(zip_path).expanduser().resolve()
     zip_path.parent.mkdir(parents=True, exist_ok=True)
 
     parent_dir = md_path.parent
     img_dir = parent_dir / "img"
-
-    # 打包文件
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-        # 写入 Markdown 文件，放在 zip 根目录
-        zipf.write(md_path, arcname=md_path.name)
-
-        # 写入 img 目录下的所有文件
-        if img_dir.exists() and img_dir.is_dir():
-            for root, _, files in os.walk(img_dir):
-                for file in files:
-                    file_path = Path(root) / file
-                    # 计算在 zip 中的相对路径，确保在 img/ 目录下
-                    rel_path = file_path.relative_to(parent_dir)
-                    zipf.write(file_path, arcname=str(rel_path))
-
-    print(f"已成功打包至: {zip_path}")
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.write(md_path, arcname=md_path.name)
+        if img_dir.is_dir():
+            for root, _, names in os.walk(img_dir):
+                for name in sorted(names):
+                    file_path = Path(root) / name
+                    archive.write(file_path, arcname=file_path.relative_to(parent_dir).as_posix())
+    return zip_path
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("用法:")
-        print("  裁剪图片: python3 extract_utils.py crop <图片路径> <输出路径> <left> <top> <right> <bottom> [--coords pixels|unit|thousand]")
-        print("  打包ZIP:  python3 extract_utils.py zip <Markdown路径> [ZIP输出路径]")
-        sys.exit(1)
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description="裁剪视觉元素，或打包 Markdown 与 img/。")
+    commands = parser.add_subparsers(dest="command", required=True)
 
-    action = sys.argv[1].lower()
+    crop = commands.add_parser("crop", help="裁剪区域并保存为 .png 或 .jpg")
+    crop.add_argument("image", help="源图片：通常是 prepare_image.py 输出的 files_to_read 路径")
+    crop.add_argument("output", help="输出路径，扩展名决定格式")
+    for name in ("left", "top", "right", "bottom"):
+        crop.add_argument(name, type=float)
+    crop.add_argument("--coords", choices=list(SCALES), required=True, help="坐标系，必须显式指定")
+    crop.add_argument("--page", type=int, default=1, help="多页或多帧源图片的页号，从 1 开始")
 
-    if action == "crop":
-        if len(sys.argv) not in (8, 10):
-            print("错误: 参数格式为 python3 extract_utils.py crop <图片路径> <输出路径> <left> <top> <right> <bottom> [--coords pixels|unit|thousand]")
-            sys.exit(1)
-        img_path = sys.argv[2]
-        out_path = sys.argv[3]
-        try:
-            coords = [float(x) for x in sys.argv[4:8]]
-        except ValueError:
-            print("错误: 坐标必须为数字", file=sys.stderr)
-            sys.exit(1)
+    pack = commands.add_parser("zip", help="打包 Markdown 与同级 img/")
+    pack.add_argument("markdown")
+    pack.add_argument("zip_path", nargs="?")
 
-        coordinate_system = "pixels"
-        if len(sys.argv) > 8:
-            if len(sys.argv) != 10 or sys.argv[8] != "--coords":
-                print(
-                    "错误: 可选参数格式为 --coords pixels|unit|thousand",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-            coordinate_system = sys.argv[9]
-
-        try:
-            crop_image(
-                img_path,
-                out_path,
-                *coords,
-                coordinate_system=coordinate_system,
+    args = parser.parse_args(argv)
+    try:
+        if args.command == "crop":
+            box = crop_image(
+                args.image, args.output, args.left, args.top, args.right, args.bottom,
+                args.coords, args.page,
             )
-        except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-            print(f"错误: {exc}", file=sys.stderr)
-            sys.exit(1)
-
-    elif action == "zip":
-        if len(sys.argv) not in (3, 4):
-            print("错误: 参数格式为 python3 extract_utils.py zip <Markdown路径> [ZIP输出路径]")
-            sys.exit(1)
-        md_path = sys.argv[2]
-        zip_path = sys.argv[3] if len(sys.argv) > 3 else None
-        try:
-            package_zip(md_path, zip_path)
-        except (FileNotFoundError, OSError) as exc:
-            print(f"错误: {exc}", file=sys.stderr)
-            sys.exit(1)
-    else:
-        print(f"错误: 未知操作 '{action}'")
-        sys.exit(1)
+            print(f"已裁剪像素区域 {list(box)} 并保存至: {Path(args.output).expanduser().resolve()}")
+        else:
+            print(f"已打包至: {package_zip(args.markdown, args.zip_path)}")
+    except (OSError, ValueError) as exc:
+        print(f"错误: {exc}", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

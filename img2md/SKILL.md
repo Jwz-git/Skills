@@ -1,12 +1,18 @@
 ---
 name: img2md
-description: 将 JPG、PNG、WEBP、BMP、GIF、TIFF 等图片、截图、扫描件和文档照片中的可见文字与版面结构忠实转写为 Markdown。用户要求 OCR、转录截图、提取图片文字、把图片变成可编辑文本或 .md、还原表格/列表/代码截图，或需要把多张扫描页整理成 Markdown 时使用。仅做照片内容描述、基于图片回答问题、分析图表含义、编辑/生成图片时不要使用本技能，除非用户同时明确要求 Markdown 转录产物。
+description: 把 JPG、PNG、WebP、GIF、BMP、TIFF 等图片、截图、扫描件和文档照片中的可见文字与版面结构忠实转写为 Markdown。用户要求 OCR、转录截图、提取图片文字、把图片变成可编辑文本或 .md、还原表格/列表/代码截图，或把多张扫描页整理成 Markdown 时使用。只描述照片、基于图片回答问题、分析图表含义、编辑或生成图片时不使用，除非同时明确要求 Markdown 转录。
 compatibility: Requires Python 3.9+, Pillow, NumPy, and an image-capable inspection tool.
 ---
 
 # img2md
 
 把图片转换成可复核的 Markdown。首要目标是忠实转录，而不是解释、改写或补全原文。
+
+命令中的 `<skill-dir>` 指本 SKILL.md 所在目录。
+
+## 边界
+
+- 本技能只把图片中的可见内容转写为 Markdown，不负责从 PDF 提取或裁剪图片作为笔记附件，也不负责保存网页。
 
 ## 输出模式
 
@@ -16,23 +22,35 @@ compatibility: Requires Python 3.9+, Pillow, NumPy, and an image-capable inspect
 - **文件转换**：用户要求转换、保存或导出时，创建 `.md`；只有存在提取出的 `img/` 资源或用户要求打包时才创建 ZIP。
 - **多图输入**：明显属于连续页面时按输入顺序合并；互不相关时分别输出。只有顺序或归属会显著影响结果时才询问用户。
 
-不要把预处理分片、临时文件或调试日志当成交付物。
+不要把预处理生成的文件或调试日志当成交付物。
 
 ## 工作流
 
 ### 1. 确认输入与目标
 
-确认所有输入图片都可访问，并判断是快速读取还是文件转换。多图、GIF、多页 TIFF、空白图或低质量图片先读 `references/edge_cases.md`。
+确认所有输入图片都可访问，并判断是快速读取还是文件转换。多图、动画、多页 TIFF、空白图或低质量图片先读 [references/edge_cases.md](references/edge_cases.md)。
 
 ### 2. 预处理
 
 对每个输入运行：
 
 ```bash
-python3 <skill_path>/scripts/prepare_image.py <图片路径> [临时输出目录]
+python3 <skill-dir>/scripts/prepare_image.py <图片路径>
 ```
 
-脚本在标准输出返回单个 JSON 对象。按 `files_to_read` 的顺序读取全部文件；`notes` 会说明 GIF、TIFF 等特殊处理。若缺少依赖，脚本会失败并给出安装提示，不会擅自修改环境。
+脚本不修改原图，在标准输出返回一个 JSON 对象：
+
+- 按 EXIF 方向摆正图片，把 CMYK、16 位、带透明通道的灰度等模式转为常规模式，把 BMP、TIFF 等视觉输入不支持的格式转为 PNG；单图超过大小上限时改存 JPEG。
+- 图片超过模型的原生分辨率时，切成不会被缩放的分片，尽量在空白处下刀；只有被迫切过内容时，相邻分片才有重叠。
+- 无需处理时直接返回原图路径；否则把文件写入新建的系统临时目录 `output_dir`。
+
+按顺序读取 `files_to_read` 中每一项的 `path`。`page` 是页号；`box` 是该文件在摆正后整页中的 `[left, top, right, bottom]` 像素位置；`notes` 说明摆正、转换、切分和动画处理。缺少依赖时脚本会报错并给出安装命令，不要擅自修改环境。
+
+可选参数：
+
+- `--tier`：默认 `high`，对应 Claude 4.7 及之后的模型（长边 ≤2576 px、≤4784 visual tokens）；其他模型用 `standard`（长边 ≤1568 px、≤1568 visual tokens）。
+- `--max-edge 2000`：一次请求中的图片（含之前轮次和工具结果中的图）超过 20 张时，每张图都适用更严的尺寸上限，官方建议此时每边不超过 2000 px。预计累计读图会超过 20 张时，从第一张起就加此参数。
+- `--output-dir <目录>`：读取工具无法访问系统临时目录时使用；目录必须不存在或为空。
 
 ### 3. 逐区转录
 
@@ -44,35 +62,34 @@ python3 <skill_path>/scripts/prepare_image.py <图片路径> [临时输出目录
 4. 看不清就标记，不用常识猜测：`[unclear]`、`[partially visible: 可确认部分]`、`[obscured]`。
 5. 页码在多页顺序有用时保留；纯装饰线可忽略；`DRAFT`、`机密`、`样本`等有语义的水印默认保留。
 
-遇到表格、代码、公式、图表或混合版面时读 `references/format_guide.md`。
+遇到表格、代码、公式、图表或混合版面时读 [references/format_guide.md](references/format_guide.md)。
 
 ### 4. 保存必要的视觉元素
 
-当非文本元素对理解原文不可替代（照片、签名、复杂公式、示意图、无法可靠线性化的流程图等）时，把对应区域保存到 Markdown 同级的 `img/`，并在原位置嵌入相对链接。
+当非文本元素对理解原文不可替代时（照片、签名、复杂公式、示意图、无法可靠线性化的流程图等），把对应区域裁剪到 Markdown 同级的 `img/`，并在原位置嵌入相对链接。
 
-使用明确的坐标系，避免像素值与归一化坐标混淆：
+从你读过的那个 `files_to_read` 文件裁剪，用比例坐标描述位置：
 
 ```bash
-python3 <skill_path>/scripts/extract_utils.py crop \
-  <源图片> <输出目录>/img/<语义化文件名>.png \
-  <left> <top> <right> <bottom> --coords pixels
+python3 <skill-dir>/scripts/extract_utils.py crop \
+  <files_to_read 中的 path> <输出目录>/img/<语义化文件名>.png \
+  <left> <top> <right> <bottom> --coords thousand
 ```
 
-`--coords` 可取：
+`--coords` 必须显式指定：
 
-- `pixels`：绝对像素，默认值；
-- `unit`：0–1 归一化坐标；
-- `thousand`：0–1000 归一化坐标。
+- `thousand`（0–1000）或 `unit`（0–1）：目测的位置一律用比例坐标，因为你看到的图可能已被缩放，像素读数不可靠。
+- `pixels`：只用于由脚本输出换算出的坐标。元素跨越多个分片时，用各分片的 `box` 把位置换算成整页像素，再对 `source.path` 加 `--page <页号> --coords pixels` 裁剪；脚本按与预处理相同的规则摆正原图，坐标一致。
 
-Markdown 中使用：
+输出扩展名决定格式：`.png` 无损，照片类区域可用 `.jpg`。目测坐标只是近似值，裁剪后查看输出图，确认完整框住目标再嵌入。Markdown 中使用：
 
 ```markdown
 ![客观、简短的内容描述](img/语义化文件名.png)
 ```
 
-### 5. 合并与去重
+### 5. 合并分片
 
-若预处理产生重叠分片，依据分片顺序拼接，并只删除重叠区域中能够确认完全相同的内容。不要为了让语句“更通顺”而改写。跨分片裁剪视觉元素时，优先从原图裁剪，避免坐标和路径混乱。
+读完全部分片后，依据 `box` 还原各分片在页面中的位置，按原文阅读顺序组织转录。`box` 有交叠的分片包含重复内容，只删除能确认完全相同的部分；不要为了让语句“更通顺”而改写。分片排列顺序和去重细则见 [references/edge_cases.md](references/edge_cases.md)。
 
 ### 6. 交付与打包
 
@@ -81,7 +98,7 @@ Markdown 中使用：
 存在 `img/` 或用户要求 ZIP 时运行：
 
 ```bash
-python3 <skill_path>/scripts/extract_utils.py zip <Markdown路径> [ZIP输出路径]
+python3 <skill-dir>/scripts/extract_utils.py zip <Markdown路径> [ZIP输出路径]
 ```
 
 最终回复列出实际生成的 `.md` 和（如有）`.zip` 路径，并简要指出 `[unclear]` 数量或未能可靠转录的区域。
@@ -95,10 +112,10 @@ python3 <skill_path>/scripts/extract_utils.py zip <Markdown路径> [ZIP输出路
 
 ## 完成检查
 
-- [ ] 已处理每个输入，并按 `files_to_read` 读取所有页/分片。
+- [ ] 已处理每个输入，并读取了 `files_to_read` 中的全部文件。
 - [ ] 转录未被总结、纠错、补全或主观解释。
 - [ ] 标题、段落、列表、表格、代码和阅读顺序可复核。
 - [ ] 不确定内容有明确标记，未从图形几何估算数据。
 - [ ] 必要视觉元素已保存到 `img/`，相对链接可解析。
-- [ ] 分片重叠内容已去重，原图与临时分片未误交付。
+- [ ] 交叠分片已去重，预处理生成的文件未被当作交付物。
 - [ ] 输出模式符合用户需求；最终路径真实存在。

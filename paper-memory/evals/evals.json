@@ -3,82 +3,89 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "当前资料库已有 .paper-memory.yaml：memory.provider 为 obsidian，Memory 使用现有 Standard Memory 模板，links.style 为 wiki，attachments.mode 为 local，attachments.root_pattern 为 ./assets/${noteFileName}，metadata.fields 为 title/date/tags。帮我把 CLIP 这篇论文整理成 Standard Memory 格式的复习笔记，说明图像和文本是如何进行对比对齐的。",
-      "expected_output": "Standard Memory output matching the template with details of CLIP's dual-encoder symmetric contrastive loss training, WIT-400M dataset, and limitations.",
+      "prompt": "当前资料库已有 .paper-memory.json：memory.provider 为 obsidian，links.style 为 wiki，attachments.mode 为 local，attachments.root_pattern 为 ./assets/${noteFileName}，attachments.link_style 为 markdown，metadata.fields 为 title/date/tags。帮我把 CLIP 这篇论文整理成 Standard Memory 格式的复习笔记，说明图像和文本是如何进行对比对齐的。",
+      "expected_output": "按 Standard Memory 模板输出 CLIP 笔记：说明图像编码器与 Transformer 文本编码器把图文对映射到共享嵌入空间，并用对称对比损失对齐；交代约 4 亿互联网图文对的训练数据、零样本迁移方式和具体局限。",
       "expectations": [
-        "Output contains YAML frontmatter matching standard-memory template.",
-        "Frontmatter does not contain an aliases field.",
-        "Output includes '一句话记忆' covering research problem, method, and outcome.",
-        "Output contains LaTeX formulations for Symmetric InfoNCE loss with appropriate delimiters.",
-        "Any local image uses standard Markdown syntax and a note-local relative path such as ./assets/CLIP/fig1_overview.png, not an Obsidian image embed or a vault-root images directory.",
-        "Output includes '与其他论文的关系' specifying links to Transformer and ALIGN."
+        "frontmatter 只包含 title、date、tags，不新增 aliases 等 profile 未配置的字段。",
+        "「一句话记忆」同时覆盖研究问题、核心方法和主要作用。",
+        "用 LaTeX 写出对称对比损失（图到文、文到图两个方向的交叉熵），行内公式使用 $...$、块级公式使用 $$...$$，不使用 \\(...\\) 或 \\[...\\]。",
+        "本地图片使用标准 Markdown 语法和笔记相对路径，例如 ./assets/CLIP/fig1_overview.png，不使用 ![[...]]，也不放进 Vault 根目录的统一图片目录。",
+        "「与其他论文的关系」只使用 connect-guide 定义的关系键，每条关系附有依据，没有直接证据的关系标为 similar-idea 或待验证；论文链接使用不包在反引号中的 Wiki Link。",
+        "不编造论文未报告的数字；引用数字时注明数据集、指标和设置。"
       ]
     },
     {
       "id": 2,
       "prompt": "当前资料库已配置 Memory 根目录和 review.persistence: body。复习 CLIP 论文，考考我。",
-      "expected_output": "An interactive active recall review prompt starting with Stage 1 (Free Recall): '请不用看笔记，用一句话说明这篇论文解决什么问题，以及核心方法是什么。'",
+      "expected_output": "先按 profile 找到 CLIP 的 Memory 作为评分依据，再从阶段一（自由回忆）开始提问：「请不用看笔记，用一句话说明这篇论文解决什么问题，以及核心方法是什么。」",
       "expectations": [
-        "Prompt initiates active recall without showing the paper summary or answers first.",
-        "Stage 1 prompt is correctly presented to the user."
+        "开始前定位并读取 CLIP 的 Memory；找不到时建议先用 compress 创建，而不是凭空出题。",
+        "不先展示论文摘要或答案。",
+        "第一问是阶段一的自由回忆问题，一次只问一个阶段。",
+        "用户回答前不评分，也不写入复习记录。"
       ]
     },
     {
       "id": 3,
-      "prompt": "当前资料库 profile 配置 memory.provider: obsidian、links.style: wiki、links.backlinks: suggest。把 VLM-Loc 和 CLIP、Text2Loc 连接起来，建立它们之间的双向链接，并给出反向链接建议。",
-      "expected_output": "Accurate relationship categories (builds-on, same-task) with Wiki-links and bidirectional backlink suggestions.",
+      "prompt": "当前资料库 profile 配置 memory.provider: obsidian、links.style: wiki、links.backlinks: suggest。把 VLM-Loc 和 CLIP、Text2Loc 关联起来，并给出反向链接建议。",
+      "expected_output": "依据论文证据给出 VLM-Loc 与 CLIP、Text2Loc 的关系，使用 connect-guide 的关系键并逐条说明依据；在 VLM-Loc 笔记中用 Wiki Link 记录关系，对 [[CLIP]] 和 [[Text2Loc]] 只给出精确的反向链接建议，不写入另一端。",
       "expectations": [
-        "Includes Wiki Links format [[CLIP]] and [[Text2Loc]].",
-        "Uses correct relationship display names such as '建立在……基础上' or '任务相同'.",
-        "Includes explicit backlink suggestions for CLIP and Text2Loc."
+        "只使用 connect-guide 定义的关系键（如 builds-on、uses-as-component、same-question、similar-idea），不使用 same-task 等未定义的键或自造的关系名。",
+        "每条关系附有论文正文、引用上下文或代码等依据；无法核验时标为 similar-idea 或待验证，而不是臆造继承关系。",
+        "使用 [[CLIP]]、[[Text2Loc]] 形式的 Wiki Link，且不包在反引号中。",
+        "因 backlinks 为 suggest，只给出目标笔记、插入位置和建议文本，不直接修改 CLIP 或 Text2Loc 笔记。"
       ]
     },
     {
       "id": 4,
       "prompt": "对比 CLIP 和 DINOv2，它们在目标和结构上有什么区别？哪个方法更适合我的 3D 语言导航课题？",
-      "expected_output": "Comprehensive comparison table comparing the two papers across the standard 13 dimensions, cause of differences, selection advice for 3D language navigation, and metrics warning.",
+      "expected_output": "按 compare-guide 的输出结构对比：CLIP 用图文对比学习对齐图像与文本，DINOv2 在精选图像数据上做无标签的自蒸馏学习；给出差异成因、以课题需求为前提的选择建议和实验指标对比警告。",
       "expectations": [
-        "Comparison addresses the 13 dimensions defined in compare-guide.",
-        "Includes the metrics comparison warning (实验指标对比警告).",
-        "Provides research selection guidance recommending DINOv2 for geometry/dense tasks."
+        "覆盖 compare-guide 的 13 个维度，或说明某些维度不适用的原因。",
+        "正确描述 DINOv2：教师网络是学生网络的指数移动平均（EMA），不与学生共享权重；训练目标结合图像级 DINO 损失与 patch 级 iBOT 掩码预测损失，不是像素重建。",
+        "说明 DINOv2 的 k-NN 和线性探测评估使用 ImageNet 训练集标签，不是零样本；CLIP 的零样本分类依赖文本提示。",
+        "包含实验指标对比警告，不直接比较设置不同的原始数字。",
+        "选择建议以课题需求为前提（如是否需要语言对齐、是否需要密集或几何特征），不给出不附条件的固定推荐。"
       ]
     },
     {
       "id": 5,
-      "prompt": "该资料库 profile 明确采用中文的论文/方法/任务/模态四维标签体系，并要求 preserve_unknown_fields: true。整理 /vault/papers 下论文笔记的 tags。当前同时存在 paper/vision-language、论文/多模态、论文/定位和任务/定位，以及分散在方法/表征学习和任务/表征学习下的同义标签。只改 frontmatter。",
-      "expected_output": "先盘点全目录标签及频次，再给出按论文、方法、任务、模态四个中文维度组织的语义合并方案；消除英文命名空间、文件内重复和跨命名空间同叶标签，同时保留定位、地理定位、地点识别等相关但不等价的任务。",
+      "prompt": "该资料库 profile 采用 tags.strategy: recommended，allowed_namespaces 为论文、方法、任务、模态，并要求 preserve_unknown_fields: true。整理 /vault/papers 下论文笔记的 tags。当前同时存在 paper/vision-language、论文/多模态、论文/定位、任务/定位、任务/地理定位、任务/地点识别，以及分散在方法/表征学习和任务/表征学习下的同名标签。只改 frontmatter。",
+      "expected_output": "先用 audit_tags.py 和完整 frontmatter 盘点全目录标签及频次，再给出按论文、方法、任务、模态四个中文维度组织的合并方案；消除英文命名空间、文件内重复和跨命名空间同叶标签，把过宽的表征学习替换为具体标签或只保留一个维度，同时保留定位、地理定位、地点识别等相关但不等价的任务。",
       "expectations": [
         "修改前汇总全部 frontmatter 标签，而不是逐文件盲目替换。",
         "统一使用论文、方法、任务、模态四个中文命名空间，允许 Transformer、BEV、LoRA 等专名保留英文。",
         "不会在同一篇笔记中同时保留论文/定位和任务/定位；论文维度改用更宽的研究领域。",
+        "表征学习有材料支持时替换为具体方法标签，否则只保留一个维度并在报告中说明。",
         "区分真正同义词与相关但不等价的定位、地理定位、地点识别。",
         "保留 aliases 及 profile 未要求删除的其他元数据字段。",
-        "只修改 frontmatter，不为纯元数据调整追加正文理解更新记录。",
-        "修改后检查旧命名空间、文件内重复和跨命名空间同叶标签，并报告结果。"
+        "只修改 frontmatter，不为纯元数据调整追加理解更新记录。",
+        "修改前后运行 audit_tags.py --strict-cross-namespace，并报告修改文件数、标签总数、唯一标签数和残留检查结果。"
       ]
     },
     {
       "id": 6,
-      "prompt": "该资料库 profile 配置 memory.provider: obsidian、attachments.mode: local、attachments.root_pattern: ./assets/${noteFileName}、attachments.link_style: markdown。把 /vault/科研/论文/imgs 里已经被论文笔记引用的图片迁移到每篇笔记自己的附件目录。只处理图片，保留 PDF 和未引用图片。Vault 使用 Custom Attachment Location，attachmentFolderPath 是 ./assets/${noteFileName}。",
-      "expected_output": "先盘点图片引用关系，再把只属于单篇笔记的已引用图片移动到该笔记同级的 assets/<笔记名>/，更新为标准 Markdown 相对路径，并验证无断链；共享、未引用和非图片附件保持不变并单独报告。",
+      "prompt": "该资料库 profile 配置 memory.provider: obsidian、attachments.mode: local、attachments.root_pattern: ./assets/${noteFileName}、attachments.link_style: markdown。把 /vault/科研/论文/imgs 里已经被论文笔记引用的图片迁移到每篇笔记自己的附件目录。只处理图片，保留 PDF 和未引用图片。Vault 的附件插件也配置为把新附件放到笔记同级的 assets/<笔记名>/。",
+      "expected_output": "先运行 audit_image_attachments.py 盘点引用关系，再把只属于单篇笔记的已引用图片移动到该笔记同级的 assets/<笔记名>/，更新为标准 Markdown 相对路径，并再次审计确认无断链；共享、未引用和非图片附件保持不变并单独报告。",
       "expectations": [
         "正确解释 ./assets/${noteFileName} 相对于笔记目录，而不是 Vault 根目录。",
+        "迁移前运行 audit_image_attachments.py 获取只读基线，迁移后再次运行，断链、歧义和位置不符为零。",
         "只自动迁移已引用且仅属于一篇笔记的图片。",
         "共享图片、未引用图片和 PDF 不会被静默移动或删除。",
         "图片引用使用 ![说明](./assets/<笔记名>/<文件名>)，不使用 ![[...]]。",
-        "移动前检查目标冲突，移动后验证所有本地图片链接存在且位于对应笔记附件目录。",
+        "移动前检查目标冲突，不覆盖同名文件。",
         "交付报告包含移动图片数、修改笔记数、图片引用数和保留例外。"
       ]
     },
     {
       "id": 7,
-      "prompt": "当前 profile 指定 papers: [{provider: filesystem, location: /vault/论文原件}]、memory: {provider: obsidian, location: /vault/科研/论文/memory}、attachments.mode: local、attachments.root_pattern: ./assets/${noteFileName}、attachments.link_style: markdown。从 Text2Loc.pdf 中提取总体架构图，放进 Text2Loc Memory。PDF 里的图是矢量图，请适当裁剪后插入笔记。",
-      "expected_output": "渲染包含总体架构图的页面并裁剪核心图区域；去除页眉、页脚、页码、正文和大块空白，同时保留完整子图、图例、坐标轴、标注及必要图题。图片写入笔记同级 assets/Text2Loc/，以标准 Markdown 相对路径引用，并在原始分辨率下视觉复核。",
+      "prompt": "当前 profile 的论文来源是本地目录 /vault/论文原件，Memory 为 obsidian、位于 /vault/科研/论文/memory，attachments.mode 为 local，attachments.root_pattern 为 ./assets/${noteFileName}，attachments.link_style 为 markdown。从 Text2Loc.pdf 中提取总体架构图，放进 Text2Loc Memory。PDF 里的图是矢量图，请适当裁剪后插入笔记。",
+      "expected_output": "渲染包含总体架构图的页面并裁剪核心图区域；去除页眉、页脚、页码、正文和大块空白，同时保留完整子图、图例、坐标轴、标注及必要图题。图片写入 Text2Loc 笔记同级的 assets/Text2Loc/，以标准 Markdown 相对路径引用，并以原始分辨率视觉复核。",
       "expectations": [
-        "不会只使用 PDF 图片对象提取而遗漏矢量流程图；必要时以 scale=3 或更高渲染页面。",
+        "不会只依赖 PDF 内嵌图片对象提取而遗漏矢量流程图；渲染整页时分辨率足以让最小文字清晰可读（通常不低于 200 DPI），并优先使用环境中已有的工具。",
         "裁剪去除无关页面内容和大块空白，但不切掉子图、图例、坐标轴、箭头、文字标注或必要图题。",
         "裁剪结果保留少量安全边距，并经过原始分辨率视觉复核。",
-        "图片保存到 /vault/科研/论文/memory/assets/Text2Loc/。",
+        "图片保存到 Text2Loc 笔记同级的 assets/Text2Loc/（笔记位于 Memory 根目录时即 /vault/科研/论文/memory/assets/Text2Loc/）。",
         "笔记使用 ![说明](./assets/Text2Loc/<文件名>)，不使用 ![[...]]。",
         "不会移动 PDF 原文，也不会删除任务开始前已有的未引用图片。"
       ]
@@ -86,34 +93,36 @@
     {
       "id": 8,
       "prompt": "帮我启用 paper-memory，以后帮我整理和复习论文。",
-      "expected_output": "发现没有本地 profile 后，先集中询问 Memory 存储及位置、论文来源和本次权限范围，并说明后续只按任务需要确认链接、附件和元数据策略；此时不臆造目录，也不直接生成论文笔记。",
+      "expected_output": "没有目标位置时不做全盘搜索，直接集中询问 Memory 存储及位置、论文来源和本次权限范围，并说明后续只按任务需要确认链接、附件和元数据策略；此时不臆造目录，也不直接生成论文笔记。",
       "expectations": [
         "询问用户使用本地 Markdown、Obsidian、Notion 或其他 Memory 存储及其位置。",
         "询问论文 PDF 或其他来源在哪里，允许来源与 Memory 使用不同平台。",
         "询问本次是只读、允许创建还是允许更新既有 Memory。",
         "优先一次集中询问，而不是逐项多轮盘问。",
-        "说明确认后会在 Memory 根目录保存 .paper-memory.yaml。",
+        "说明确认后会把 .paper-memory.json 保存在本地 Memory 根目录；远程存储则保存在用户指定的本地目录。",
         "不会通过修改共享 SKILL.md 保存用户配置。"
       ]
     },
     {
       "id": 9,
-      "prompt": "目标 Memory 目录已经存在有效的 .paper-memory.yaml，其中 memory.provider=markdown、links.style=markdown、tags.strategy=preserve。把这篇论文写成 Standard Memory。",
-      "expected_output": "直接读取并复用最近的 profile，不重复询问平台、目录或标签规范；保留 Standard Memory 章节结构并使用普通 Markdown 语义。",
+      "prompt": "目标 Memory 目录已经存在有效的 .paper-memory.json，其中 memory.provider=markdown、links.style=markdown、links.index=null、tags.strategy=preserve。把这篇论文写成 Standard Memory。",
+      "expected_output": "用 manage_profile.py show 读取并复用最近的 profile，不重复询问平台、目录或标签规范；保留 Standard Memory 章节结构，论文关系使用相对 Markdown 链接。",
       "expectations": [
         "不会重复询问 profile 中已有的信息。",
-        "不会使用 Obsidian Wiki Link 或创建 MOC。",
+        "论文关系使用相对 Markdown 链接，不使用 Obsidian Wiki Link。",
+        "links.index 为 null，不创建或更新任何索引笔记。",
         "不会把中文四维标签体系强加到 tags.strategy=preserve 的资料库。"
       ]
     },
     {
       "id": 10,
       "prompt": "我的论文 PDF 在本地 /papers，但 Memory 放在 Notion database abc123。请初始化 paper-memory；Notion properties 已有 Title、Year、Tags，不要改 database schema。",
-      "expected_output": "把论文来源和 Memory 存储分别建模，并询问 profile 的本地保存目录；确认写入范围后生成 profile。Notion metadata 映射到现有 properties，不把 YAML frontmatter 写进页面，也不声称本地文件路径已经上传。",
+      "expected_output": "把论文来源和 Memory 存储分别建模，并询问 profile 的本地保存目录；确认写入范围后用 manage_profile.py init 生成 profile，metadata.fields 记录现有 properties。Notion 元数据映射到现有 properties，不把 YAML frontmatter 写进页面，也不声称本地文件已经上传。",
       "expectations": [
-        "memory.provider 为 notion 且 memory.location 使用 abc123。",
+        "memory.provider 为 notion，memory.location 为 abc123。",
         "papers 包含 filesystem=/papers。",
-        "询问 .paper-memory.yaml 的本地保存目录，而不是尝试写进 Notion。",
+        "metadata.fields 为现有的 Title、Year、Tags。",
+        "询问 .paper-memory.json 的本地保存目录，而不是尝试写进 Notion。",
         "不会把 memory.location 写成不存在的本地目录。",
         "不会创建或修改 Notion database properties。",
         "不会把 YAML frontmatter 作为 Notion 页面正文。"
@@ -132,13 +141,15 @@
     },
     {
       "id": 12,
-      "prompt": "profile 的 tags.strategy=preserve、reject_aliases=false，附件 root_pattern=./media/${noteFileName}。审计本地 Markdown Memory。",
-      "expected_output": "标签审计保留 aliases 和任意既有标签体系；附件审计以 ./media/<笔记名> 作为期望目录，不使用硬编码 assets/<笔记名>。",
+      "prompt": "profile 的 memory.provider=markdown、tags.strategy=preserve、reject_aliases=false，attachments.mode=local、root_pattern=./media/${noteFileName}、link_style=markdown。审计本地 Markdown Memory。",
+      "expected_output": "运行只读的 audit_tags.py 和 audit_image_attachments.py：标签审计保留 aliases 和任意既有标签体系；附件审计以笔记同级的 media/<笔记名>/ 作为期望目录，不使用硬编码的 assets/<笔记名>，显式路径断链不按同名文件猜测。只报告，不修改文件。",
       "expectations": [
         "aliases 不会被判为错误。",
-        "英文或无命名空间标签不会仅因旧推荐 taxonomy 被判为错误。",
-        "附件位置依据 profile 的 root_pattern 展开。",
-        "只有 link_style=markdown 时 Wiki 图片才被判为格式不一致。"
+        "英文或无命名空间标签不会仅因推荐体系而被判为错误。",
+        "附件位置依据 profile 的 root_pattern 展开为笔记同级的 media/<笔记名>/。",
+        "显式路径找不到目标时报告为断链，不按文件名猜测成其他目录中的同名图片。",
+        "link_style 为 markdown，因此 ![[...]] 图片嵌入被报告为格式不一致。",
+        "审计只读，不移动、改写或删除任何文件。"
       ]
     }
   ]

@@ -1,0 +1,82 @@
+[
+  {
+    "query": "根据我这个笔记库里的资料回答：梯度累积为什么要把 loss 除以累积步数？标出是哪篇笔记写的。",
+    "should_trigger": true
+  },
+  {
+    "query": "查一下当前目录的知识库，我以前有没有记过 Redis 的 RDB 和 AOF 持久化有什么区别？没有的话查官方文档补进去。",
+    "should_trigger": true
+  },
+  {
+    "query": "我笔记里写的 Python contextmanager 用法对不对？帮我核实一下，有错就改在原来那篇笔记里。",
+    "should_trigger": true
+  },
+  {
+    "query": "PyTorch 最新稳定版是多少？先看我知识库里记的，过时了就联网查，再把笔记更新一下。",
+    "should_trigger": true
+  },
+  {
+    "query": "把刚才讨论的 FlashAttention 原理整理进我的笔记库，放进合适的现有笔记里，别新建一堆零散文件。",
+    "should_trigger": true
+  },
+  {
+    "query": "Using only the docs in this folder (it's our team knowledge base), what checks do we run before a production release? Cite the files you used.",
+    "should_trigger": true
+  },
+  {
+    "query": "这个 docs 目录是我们的内部知识库。服务上线前要过哪些检查项？只用库里的资料，不够就直说。",
+    "should_trigger": true
+  },
+  {
+    "query": "在我的 Obsidian 库里找找有没有写过 Docker 多阶段构建，有的话总结一下并标明出处。",
+    "should_trigger": true
+  },
+  {
+    "query": "我们团队 wiki（就是当前文件夹）里关于 OAuth 刷新令牌的说明是不是过时了？对照官方文档核实一下，需要的话更新对应笔记。",
+    "should_trigger": true
+  },
+  {
+    "query": "我知识库里讲注意力机制的那篇笔记有没有提到 KV cache？没有的话查资料补进去。",
+    "should_trigger": true
+  },
+  {
+    "query": "把这篇博客 https://example.com/blog/rust-async 按原文保存成 Markdown，图片也下载到本地。",
+    "should_trigger": false
+  },
+  {
+    "query": "Archive this thread as a markdown file and keep all the images: https://example.com/threads/123",
+    "should_trigger": false
+  },
+  {
+    "query": "帮我给《Attention Is All You Need》建一篇论文笔记，按我的论文笔记模板来。",
+    "should_trigger": false
+  },
+  {
+    "query": "复习一下我上周记的 LoRA 论文笔记，再把它和 QLoRA 那篇论文笔记做个对比。",
+    "should_trigger": false
+  },
+  {
+    "query": "把我 Obsidian 库里所有笔记的 tags 统一成小写，created 字段统一成 YYYY-MM-DD 格式。",
+    "should_trigger": false
+  },
+  {
+    "query": "只读检查一下 vault 里哪些笔记的 frontmatter YAML 写坏了，列个清单给我。",
+    "should_trigger": false
+  },
+  {
+    "query": "把这张截图里的表格转成 Markdown。",
+    "should_trigger": false
+  },
+  {
+    "query": "写一个 Python 函数，计算列表的中位数。",
+    "should_trigger": false
+  },
+  {
+    "query": "把这段英文摘要翻译成中文：Large language models have shown remarkable abilities across many tasks.",
+    "should_trigger": false
+  },
+  {
+    "query": "总结一下这个链接里的文章讲了什么，不用保存：https://example.com/post/42",
+    "should_trigger": false
+  }
+]

@@ -1,0 +1,36 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # Pinned: Python 3.9 (the oldest supported runtime) is installed on demand and may lack builds for newer images.
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.x"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: python -m pip install -r img2md/requirements.txt
+      - name: Run skill tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          status=0
+          for dir in */tests; do
+            echo "::group::$dir"
+            python -m unittest discover -s "$dir" -v || status=1
+            echo "::endgroup::"
+          done
+          exit $status

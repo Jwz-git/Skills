@@ -24,7 +24,7 @@
   - Start an active recall session for DINOv2
 
 ### connect（关联）
-当用户希望建立论文关系，或更新目标平台中的链接、relation、MOC/索引时触发。
+当用户希望建立论文关系，或更新目标平台中的链接、relation、索引时触发。
 - **触发示例**：
   - 这篇论文和哪些论文有关
   - 加入我的 Obsidian 知识图谱
@@ -69,7 +69,7 @@
 当用户请求同时匹配多个模式时，按以下优先级规则处理：
 
 1. **顺序执行**：如果用户说"先压缩论文 X，再和 Y 对比"，先执行 `compress`，再执行 `compare`。
-2. **compress + connect**：如果用户说"压缩这篇新论文并和 CLIP 关联起来"，路由到 `compress`，但确保「与其他论文的关系」章节完整填写，并给出反向链接建议。
+2. **compress + connect**：如果用户说"压缩这篇新论文并和 CLIP 关联起来"，路由到 `compress`，但确保「与其他论文的关系」章节完整填写，并按 `links.backlinks` 处理反向链接。
 3. **compare + connect**：先执行 `compare`，再按 profile 的平台和 backlink 策略记录关系。
 4. **compress + attachment**：生成新 Memory 时，在内容结构完成后按 profile 保存或上传核心图，并验证引用。
 5. **update + attachment**：正文理解和图片都变化时，分别执行内容更新规则与附件规则；仅附件路径变化不属于理解更新。

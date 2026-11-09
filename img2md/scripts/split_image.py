@@ -1,255 +1,125 @@
-#!/usr/bin/env python3
-"""
-图片智能裁剪脚本 - 用于 img2md skill
-当图片过长时，自动检测空白区域进行裁剪，避免切到文字。
-支持自适应阈值，对深色背景、低对比度图片也能正确检测文字区域。
-"""
+"""规划分片：尽量在空白处切开图片，使每个分片都不超过模型的原生分辨率。"""
 
-import sys
+from __future__ import annotations
+
+import math
+
 import numpy as np
-from PIL import Image
-from pathlib import Path
+
+import image_io
+
+PATCH = 28
+MIN_EDGES = 2
 
 
-def _to_grayscale(image_array):
-    """将图片转为灰度 numpy 数组"""
-    if len(image_array.shape) == 3:
-        # 使用加权平均（接近人眼感知），比简单 mean 更准确
-        if image_array.shape[2] == 4:
-            # RGBA → 去掉 alpha 通道
-            image_array = image_array[:, :, :3]
-        gray = np.dot(image_array[..., :3].astype(np.float32), [0.299, 0.587, 0.114]).astype(np.uint8)
+def fits(width: int, height: int, max_edge: int, max_tokens: int) -> bool:
+    tokens = math.ceil(width / PATCH) * math.ceil(height / PATCH)
+    return max(width, height) <= max_edge and tokens <= max_tokens
+
+
+def max_band(width: int, max_edge: int, max_tokens: int) -> int:
+    """给定宽度时不会被缩放的最大高度。"""
+    return min(max_edge, max_tokens // math.ceil(width / PATCH) * PATCH)
+
+
+def plan_tiles(image, max_edge: int, max_tokens: int) -> list:
+    """返回 (left, top, right, bottom) 分片列表，坐标以传入图片为准。"""
+    width, height = image.size
+    if fits(width, height, max_edge, max_tokens):
+        return [(0, 0, width, height)]
+
+    gray = np.asarray(image_io.flatten(image).convert("L"), dtype=np.int16)
+    alpha = np.asarray(image.getchannel("A"), dtype=np.int16) if image.mode == "RGBA" else None
+    row_edges, column_edges = _edge_maps(gray, alpha)
+    unit = _typical_run(row_edges.sum(axis=1) >= MIN_EDGES)
+
+    if width <= max_edge:
+        columns, clean = [(0, width)], True
     else:
-        gray = image_array
-    return gray
+        columns, clean = plan_cuts(column_edges.sum(axis=0), max_edge, unit)
+
+    if clean:
+        # 纵向切点都在空白处（如栏间距）：各列独立按行切分，按列优先排列。
+        tiles = []
+        for left, right in columns:
+            limit = max_band(right - left, max_edge, max_tokens)
+            bands, _ = plan_cuts(row_edges[:, left:right - 1].sum(axis=1), limit, unit)
+            tiles.extend((left, top, right, bottom) for top, bottom in bands)
+        return tiles
+
+    # 纵向切点穿过内容：所有列共用同一组行切点，按行优先排列，便于横向拼接整行。
+    limit = max_band(max(right - left for left, right in columns), max_edge, max_tokens)
+    bands, _ = plan_cuts(row_edges.sum(axis=1), limit, unit)
+    return [(left, top, right, bottom) for top, bottom in bands for left, right in columns]
 
 
-def _adaptive_threshold(gray, num_bins=100):
+def plan_cuts(counts, limit: int, unit: int):
+    """沿一个方向切分，使每段长度都不超过 limit。
+
+    counts 是每一行（或列）的边缘像素数。优先在足够宽的空白处切开且不留重叠；
+    找不到时在内容最少处切开，并让下一段与上一段重叠。返回 (分段列表, 是否全部落在空白处)。
     """
-    自适应计算行活跃度阈值。
-    对于高对比度图片（如白底黑字），文字区域与空白区域差异大，阈值可以较高；
-    对于低对比度图片（如深色背景），差异小，需要更低的阈值。
-    """
-    # 计算行间差异
-    row_diff = np.abs(np.diff(gray.astype(np.float32), axis=0))
-    row_activity = np.mean(row_diff, axis=1)
+    length = len(counts)
+    min_gap = max(16, unit // 2)
+    margin = min_gap // 2
+    overlap = min(max(96, 2 * unit), limit // 4)
+    gaps = [
+        (start + margin, end - margin)
+        for start, end in _runs(counts < MIN_EDGES)
+        if end - start >= min_gap
+    ]
 
-    # 使用直方图分析找到合适的阈值
-    hist, bin_edges = np.histogram(row_activity, bins=num_bins)
-    # 找到非零活跃度的中位数作为基准
-    active_values = row_activity[row_activity > 0]
-    if len(active_values) == 0:
-        return 10  # 极端退化情况
+    segments, clean, start = [], True, 0
+    while length - start > limit:
+        remaining = length - start
+        target = start + math.ceil(remaining / math.ceil(remaining / limit))
+        low, high = start + limit // 2, min(start + limit, length - limit // 4)
 
-    median_activity = np.median(active_values)
-    # 阈值设为中位数的 20%，这样能适应不同对比度
-    threshold = max(median_activity * 0.2, 2)
-    return threshold
+        options = [
+            min(max(target, max(low, a)), min(high, b))
+            for a, b in gaps
+            if max(low, a) <= min(high, b)
+        ]
+        if options:
+            cut = min(options, key=lambda value: abs(value - target))
+            segments.append((start, cut))
+            start = cut
+            continue
 
+        clean = False
+        a, b = max(low, target - limit // 8), min(high, target + limit // 8)
+        window = counts[a:b + 1]
+        candidates = np.flatnonzero(window == window.min()) + a
+        cut = int(candidates[np.argmin(np.abs(candidates - target))])
+        segments.append((start, cut))
+        start = cut - overlap
 
-def detect_text_regions(image_array, row_threshold=None):
-    """
-    检测图片中包含文字的区域（自适应阈值版本）
-
-    Args:
-        image_array: 图片的 numpy 数组
-        row_threshold: 判断一行是否包含内容的阈值（None 则自动计算）
-
-    Returns:
-        np.ndarray: 布尔数组，True 表示该行包含内容
-    """
-    gray = _to_grayscale(image_array)
-
-    # 计算每一行的像素变化程度（文字区域变化较大）
-    row_diff = np.abs(np.diff(gray.astype(np.float32), axis=0))
-    row_activity = np.mean(row_diff, axis=1)
-
-    # 自适应阈值
-    if row_threshold is None:
-        row_threshold = _adaptive_threshold(gray)
-
-    # 判断哪些行包含内容
-    text_rows = row_activity > row_threshold
-
-    return text_rows
+    segments.append((start, length))
+    return segments, clean
 
 
-def find_safe_split_points(image_array, target_height=1000, overlap=150,
-                           margin=30, min_gap=50):
-    """
-    寻找安全的裁剪点（避开文字区域）
-
-    Args:
-        image_array: 图片 numpy 数组
-        target_height: 每个片段的目标高度
-        overlap: 片段间重叠像素
-        margin: 裁剪线距离文字的安全边距
-        min_gap: 被认为是"空白区域"的最小连续行数
-
-    Returns:
-        list: 安全的裁剪位置列表（每个片段的结束 y 坐标）
-    """
-    height = image_array.shape[0]
-    text_rows = detect_text_regions(image_array)
-
-    split_points = []
-    current_pos = target_height
-
-    while current_pos < height - 100:  # 保留底部至少100像素
-        # 在目标位置附近寻找最佳裁剪点
-        search_start = max(current_pos - 200, margin)
-        search_end = min(current_pos + 200, height - margin)
-
-        best_split = None
-        best_gap_size = 0
-
-        # 寻找最大的空白区域
-        i = search_start
-        while i < search_end:
-            if not text_rows[i]:  # 当前行没有文字
-                # 计算这个空白区域有多大
-                gap_start = i
-                while i < search_end and not text_rows[i]:
-                    i += 1
-                gap_end = i
-                gap_size = gap_end - gap_start
-
-                # 如果空白区域足够大，记录中心点作为候选裁剪点
-                if gap_size >= min_gap and gap_size > best_gap_size:
-                    best_gap_size = gap_size
-                    best_split = gap_start + gap_size // 2
-            else:
-                i += 1
-
-        # 如果找到了合适的裁剪点
-        if best_split and best_split > (split_points[-1] if split_points else 0) + 300:
-            split_points.append(best_split)
-            current_pos = best_split + target_height - overlap
-        else:
-            # 没找到合适的空白区域，强制在目标位置裁剪（但避开明显的文字）
-            forced_split = current_pos
-            # 稍微调整以避免切到文字
-            for offset in range(0, 100, 5):
-                if forced_split + offset < height - margin:
-                    if not text_rows[forced_split + offset]:
-                        forced_split += offset
-                        break
-                if forced_split - offset > (split_points[-1] if split_points else 0) + margin:
-                    if not text_rows[forced_split - offset]:
-                        forced_split -= offset
-                        break
-
-            split_points.append(forced_split)
-            current_pos = forced_split + target_height - overlap
-
-    return split_points
+def _edge_maps(gray, alpha):
+    """返回横向与纵向的强边缘布尔图，阈值随图片对比度自适应。"""
+    dx = np.abs(np.diff(gray, axis=1))
+    dy = np.abs(np.diff(gray, axis=0))
+    sample = dx[::2, ::2]
+    strong = float(np.percentile(sample, 99.5)) if sample.size else 0.0
+    threshold = min(max(0.3 * strong, 6.0), 32.0)
+    row_edges, column_edges = dx > threshold, dy > threshold
+    if alpha is not None:
+        row_edges |= np.abs(np.diff(alpha, axis=1)) > threshold
+        column_edges |= np.abs(np.diff(alpha, axis=0)) > threshold
+    return row_edges, column_edges
 
 
-def split_image(input_path, output_dir=None, max_height=1000, overlap=150, height_threshold=1500):
-    """
-    将长图片裁剪为多个片段
-
-    Args:
-        input_path: 输入图片路径
-        output_dir: 输出目录（默认为图片所在目录）
-        max_height: 每个片段的最大高度
-        overlap: 片段间重叠像素数
-        height_threshold: 高度阈值，超过此值才裁剪
-
-    Returns:
-        list: 生成的片段文件路径列表
-    """
-    input_path = Path(input_path)
-
-    if not input_path.exists():
-        raise FileNotFoundError(f"图片不存在: {input_path}")
-
-    # 打开图片
-    img = Image.open(input_path)
-    width, height = img.size
-
-    # 如果图片不够长，直接返回原图
-    if height <= height_threshold:
-        return [str(input_path)]
-
-    # 确定输出目录
-    if output_dir is None:
-        output_dir = input_path.parent / f"{input_path.stem}_split"
-    else:
-        output_dir = Path(output_dir)
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # 转换为 numpy 数组进行分析
-    img_array = np.array(img)
-
-    # 寻找安全的裁剪点
-    split_points = find_safe_split_points(img_array, target_height=max_height, overlap=overlap)
-
-    if not split_points:
-        print("未找到合适的裁剪点，返回原图", file=sys.stderr)
-        return [str(input_path)]
-
-    print(
-        f"图片高度: {height}px，将在以下位置裁剪: {split_points}",
-        file=sys.stderr,
-    )
-
-    # 执行裁剪
-    segments = []
-    start_y = 0
-
-    for i, end_y in enumerate(split_points):
-        # 裁剪片段（包含重叠区域）
-        segment = img.crop((0, start_y, width, min(end_y + overlap, height)))
-
-        output_path = output_dir / f"{input_path.stem}_part{i+1:02d}.png"
-        segment.save(output_path, "PNG")
-        segments.append(str(output_path))
-
-        print(
-            f"片段 {i+1}: y={start_y} 到 {min(end_y + overlap, height)}，保存至 {output_path}",
-            file=sys.stderr,
-        )
-
-        start_y = end_y
-
-    # 最后一个片段
-    if start_y < height:
-        segment = img.crop((0, start_y, width, height))
-        output_path = output_dir / f"{input_path.stem}_part{len(split_points)+1:02d}.png"
-        segment.save(output_path, "PNG")
-        segments.append(str(output_path))
-        print(
-            f"片段 {len(split_points)+1}: y={start_y} 到 {height}，保存至 {output_path}",
-            file=sys.stderr,
-        )
-
-    print(f"共生成 {len(segments)} 个片段", file=sys.stderr)
-    return segments
+def _runs(mask):
+    """返回布尔数组中连续 True 区段的 (start, end) 列表。"""
+    padded = np.concatenate(([False], np.asarray(mask, dtype=bool), [False]))
+    changes = np.diff(padded.astype(np.int8))
+    return list(zip(np.flatnonzero(changes == 1).tolist(), np.flatnonzero(changes == -1).tolist()))
 
 
-def main():
-    """命令行入口"""
-    if len(sys.argv) < 2:
-        print("用法: python split_image.py <图片路径> [输出目录] [最大高度] [重叠像素]")
-        print("示例: python split_image.py document.png ./output 1000 150")
-        sys.exit(1)
-
-    input_path = sys.argv[1]
-    output_dir = sys.argv[2] if len(sys.argv) > 2 else None
-    max_height = int(sys.argv[3]) if len(sys.argv) > 3 else 1000
-    overlap = int(sys.argv[4]) if len(sys.argv) > 4 else 150
-
-    try:
-        segments = split_image(input_path, output_dir, max_height, overlap)
-        print("\n生成的文件:")
-        for seg in segments:
-            print(f"  - {seg}")
-    except Exception as e:
-        print(f"错误: {e}")
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
+def _typical_run(content) -> int:
+    """估计典型文字行高，用于判断空白是否足够宽以及重叠多少。"""
+    lengths = [end - start for start, end in _runs(content) if end - start >= 3]
+    return min(int(np.median(lengths)), 100) if lengths else 0
