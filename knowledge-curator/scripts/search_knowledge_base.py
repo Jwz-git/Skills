@@ -514,7 +514,10 @@ def detect_pdf_backend() -> tuple[Optional[str], object]:
     if os.environ.get("KC_DISABLE_PYTHON_PDF") == "1":
         return None, None
     try:
-        import fitz  # type: ignore
+        try:
+            import pymupdf as fitz  # type: ignore
+        except ImportError:
+            import fitz  # type: ignore
         if hasattr(fitz, "TOOLS") and hasattr(fitz.TOOLS, "mupdf_display_errors"):
             fitz.TOOLS.mupdf_display_errors(False)
         return "fitz", fitz

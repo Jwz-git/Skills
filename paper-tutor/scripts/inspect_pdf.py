@@ -54,14 +54,18 @@ BULLET_START_RE = re.compile(r"^(?:[•\u2022\u25cf\u25e6\u2023\-–—*]|\(\d+\
 
 def require_fitz():
     try:
-        import fitz  # type: ignore
+        import pymupdf as fitz  # type: ignore
         return fitz
     except ImportError:
-        sys.stderr.write(
-            "ERROR: PyMuPDF (fitz) is not installed in this Python environment. "
-            "Fall back to the agent's native PDF reading capability.\n"
-        )
-        sys.exit(2)
+        try:
+            import fitz  # type: ignore
+            return fitz
+        except ImportError:
+            sys.stderr.write(
+                "ERROR: PyMuPDF (pymupdf) is not installed in this Python environment. "
+                "Fall back to the agent's native PDF reading capability.\n"
+            )
+            sys.exit(2)
 
 
 def find_paper_memory_dirs(root: Path) -> list[Path]:

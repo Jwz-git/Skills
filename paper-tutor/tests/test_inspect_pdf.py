@@ -10,7 +10,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import fitz
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "inspect_pdf.py"
 

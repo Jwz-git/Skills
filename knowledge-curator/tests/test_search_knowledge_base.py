@@ -280,9 +280,12 @@ class SearchCliTests(unittest.TestCase):
 
     def test_pdf_with_python_fallback_reports_pages(self):
         try:
-            import fitz
+            import pymupdf as fitz
         except ImportError:
-            self.skipTest("PyMuPDF (fitz) 未安装")
+            try:
+                import fitz
+            except ImportError:
+                self.skipTest("PyMuPDF (fitz) 未安装")
         pdf_path = self.kb / "papers" / "fallback.pdf"
         pdf_path.parent.mkdir(parents=True, exist_ok=True)
         doc = fitz.open()
