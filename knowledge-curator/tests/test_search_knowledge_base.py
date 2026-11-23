@@ -184,8 +184,10 @@ class SearchCliTests(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def run_search(self, query, *args, root=None, path=None):
+    def run_search(self, query, *args, root=None, path=None, extra_env=None):
         env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", PYTHONIOENCODING="utf-8", PATH=str(path or self.empty_bin))
+        if extra_env:
+            env.update(extra_env)
         command = [sys.executable, str(SCRIPT), query, "--root", str(root or self.kb), *args]
         return subprocess.run(command, capture_output=True, encoding="utf-8", env=env)
 
@@ -262,12 +264,39 @@ class SearchCliTests(unittest.TestCase):
             self.assertIn(location, result.stdout)
             self.assertIn(text, result.stdout)
 
-    def test_pdf_without_pdftotext_matches_filename_only(self):
+    def test_pdf_without_any_backend_matches_filename_only(self):
+        write_files(self.kb, {"papers/sparse-attention.pdf": b"%PDF-1.4 not really a pdf"})
+        result = self.run_search("sparse attention", extra_env={"KC_DISABLE_PYTHON_PDF": "1"})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("note: 未找到可用的 PDF 文本抽取工具（pdftotext / PyMuPDF / pypdf），1 个 PDF 只按文件名匹配", result.stdout)
+        self.assertIn("papers/sparse-attention.pdf [pdf, 仅文件名", result.stdout)
+
+    def test_corrupted_pdf_falls_back_gracefully(self):
         write_files(self.kb, {"papers/sparse-attention.pdf": b"%PDF-1.4 not really a pdf"})
         result = self.run_search("sparse attention")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("note: 未找到 pdftotext，1 个 PDF 只按文件名匹配", result.stdout)
+        self.assertNotIn("Traceback", result.stderr)
         self.assertIn("papers/sparse-attention.pdf [pdf, 仅文件名", result.stdout)
+
+    def test_pdf_with_python_fallback_reports_pages(self):
+        try:
+            import fitz
+        except ImportError:
+            self.skipTest("PyMuPDF (fitz) 未安装")
+        pdf_path = self.kb / "papers" / "fallback.pdf"
+        pdf_path.parent.mkdir(parents=True, exist_ok=True)
+        doc = fitz.open()
+        p1 = doc.new_page()
+        p1.insert_text((72, 72), "Introduction overview")
+        p2 = doc.new_page()
+        p2.insert_text((72, 72), "FlashAttention reduces memory overhead")
+        doc.save(pdf_path)
+        doc.close()
+        result = self.run_search("FlashAttention memory overhead")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.result_paths(result.stdout)[0], "papers/fallback.pdf")
+        self.assertIn("第 2 页", result.stdout)
+        self.assertIn("FlashAttention reduces memory overhead", result.stdout)
 
     def test_pdf_with_pdftotext_reports_pages(self):
         write_files(self.kb, {"papers/report.pdf": b"%PDF-1.4"})

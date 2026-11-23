@@ -62,20 +62,43 @@ class AuditImageAttachmentsTests(unittest.TestCase):
         self.assertEqual(report["unreferenced_images"], ["papers/assets/CLIP/fig.png"])
 
     def test_encoded_angle_bracket_title_and_fragment_forms_resolve(self):
-        self.file("assets/My Note/fig 1.png")
+        for idx in range(1, 6):
+            self.file(f"assets/My Note/fig {idx}.png")
         self.file("other/fig 1.png")
         self.file("My Note.md", "\n".join([
             '![编码](./assets/My%20Note/fig%201.png "图 1")',
-            "![尖括号](<./assets/My Note/fig 1.png>)",
-            "![片段](./assets/My%20Note/fig%201.png#page=2)",
-            "![查询](assets/My%20Note/fig%201.png?raw=1)",
-            '<img src="./assets/My%20Note/fig%201.png" alt="html">',
+            "![尖括号](<./assets/My Note/fig 2.png>)",
+            "![片段](./assets/My%20Note/fig%203.png#page=2)",
+            "![查询](assets/My%20Note/fig%204.png?raw=1)",
+            '<img src="./assets/My%20Note/fig%205.png" alt="html">',
         ]) + "\n")
         code, report = self.audit()
         self.assertEqual(code, 0, report)
         self.assertEqual(report["image_references"], 5)
-        self.assertEqual(report["unique_referenced_images"], 1)
+        self.assertEqual(report["unique_referenced_images"], 5)
+        self.assertEqual(report["duplicate_references"], [])
+        self.assertEqual(report["inline_images"], [])
         self.assertEqual(report["unreferenced_images"], ["papers/other/fig 1.png"])
+
+    def test_duplicate_image_in_same_note_is_reported(self):
+        self.file("assets/CLIP/fig1.png")
+        self.file("CLIP.md", "![首图](./assets/CLIP/fig1.png)\n\n![方法图](./assets/CLIP/fig1.png)\n")
+        code, report = self.audit()
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            report["duplicate_references"],
+            [{"note": "papers/CLIP.md", "image": "papers/assets/CLIP/fig1.png", "count": 2}],
+        )
+
+    def test_inline_image_is_reported(self):
+        self.file("assets/CLIP/fig1.png")
+        self.file("CLIP.md", "总体架构见下图 ![图 1：流程](./assets/CLIP/fig1.png)。\n")
+        code, report = self.audit()
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            report["inline_images"],
+            [{"note": "papers/CLIP.md", "line": 1, "target": "./assets/CLIP/fig1.png", "syntax": "markdown"}],
+        )
 
     def test_external_urls_and_code_are_ignored(self):
         self.file("CLIP.md", "\n".join([

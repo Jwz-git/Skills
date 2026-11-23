@@ -9,8 +9,9 @@
         "frontmatter 只包含 title、date、tags，不新增 aliases 等 profile 未配置的字段。",
         "「一句话记忆」同时覆盖研究问题、核心方法和主要作用。",
         "用 LaTeX 写出对称对比损失（图到文、文到图两个方向的交叉熵），行内公式使用 $...$、块级公式使用 $$...$$，不使用 \\(...\\) 或 \\[...\\]。",
-        "本地图片使用标准 Markdown 语法和笔记相对路径，例如 ./assets/CLIP/fig1_overview.png，不使用 ![[...]]，也不放进 Vault 根目录的统一图片目录。",
-        "「与其他论文的关系」只使用 connect-guide 定义的关系键，每条关系附有依据，没有直接证据的关系标为 similar-idea 或待验证；论文链接使用不包在反引号中的 Wiki Link。",
+        "本地图片使用标准 Markdown 语法和笔记相对路径，例如 ./assets/CLIP/fig1_overview.png，独立成段且同篇不重复嵌入，不使用 ![[...]]，也不放进 Vault 根目录的统一图片目录。",
+        "「与其他论文的关系」按 connect-guide 判定关系并附有依据，正文用自然中文表达（不挂英文关系键、不堆砌 [AI分析] 等机器标签），仅对库中真实存在的笔记使用 Wiki Link，未建卡论文用加粗文本。",
+        "使用单 H1 主标题 + ##/### 树形层级，默认聚焦纯粹论文精读内容，不生成主动回忆问题或 AI 更新流水账。",
         "不编造论文未报告的数字；引用数字时注明数据集、指标和设置。"
       ]
     },
@@ -28,12 +29,12 @@
     {
       "id": 3,
       "prompt": "当前资料库 profile 配置 memory.provider: obsidian、links.style: wiki、links.backlinks: suggest。把 VLM-Loc 和 CLIP、Text2Loc 关联起来，并给出反向链接建议。",
-      "expected_output": "依据论文证据给出 VLM-Loc 与 CLIP、Text2Loc 的关系，使用 connect-guide 的关系键并逐条说明依据；在 VLM-Loc 笔记中用 Wiki Link 记录关系，对 [[CLIP]] 和 [[Text2Loc]] 只给出精确的反向链接建议，不写入另一端。",
+      "expected_output": "依据论文证据判断 VLM-Loc 与 CLIP、Text2Loc 的关系，在 VLM-Loc 笔记中用自然中文说明关系（不写英文关系键）并对库中已存在的 [[CLIP]] 和 [[Text2Loc]] 建 Wiki Link；反向链接建议只在对话回复中给出，不写入任何笔记正文。",
       "expectations": [
-        "只使用 connect-guide 定义的关系键（如 builds-on、uses-as-component、same-question、similar-idea），不使用 same-task 等未定义的键或自造的关系名。",
-        "每条关系附有论文正文、引用上下文或代码等依据；无法核验时标为 similar-idea 或待验证，而不是臆造继承关系。",
-        "使用 [[CLIP]]、[[Text2Loc]] 形式的 Wiki Link，且不包在反引号中。",
-        "因 backlinks 为 suggest，只给出目标笔记、插入位置和建议文本，不直接修改 CLIP 或 Text2Loc 笔记。"
+        "关系判断符合 connect-guide 的证据门槛，正文用自然中文描述，不在笔记末尾附英文关系键。",
+        "每条关系附有论文正文、引用上下文或代码等依据；无直接继承证据时按思想相似描述，不臆造继承关系。",
+        "只对库中真实存在的笔记使用 [[CLIP]]、[[Text2Loc]] 形式的 Wiki Link，不包在反引号中，不造空双链。",
+        "因 backlinks 为 suggest，只在对话回复中给出目标笔记、插入位置和建议文本，不写入 VLM-Loc 或目标笔记正文。"
       ]
     },
     {

@@ -109,9 +109,9 @@ HTML_BREAK_RE = re.compile(
 TAG_RE = re.compile(r"<[^>]+>")
 
 FILENAME_ONLY_NOTES = {
-    "no_pdftotext": (
-        "未找到 pdftotext，{count} 个 PDF 只按文件名匹配",
-        "未找到 pdftotext，只按文件名匹配；请用能读取 PDF 的工具查看原件。",
+    "no_pdf_backend": (
+        "未找到可用的 PDF 文本抽取工具（pdftotext / PyMuPDF / pypdf），{count} 个 PDF 只按文件名匹配",
+        "未找到可用的 PDF 文本抽取工具（pdftotext / PyMuPDF / pypdf），只按文件名匹配；请用能读取 PDF 的工具查看原件。",
     ),
     "unsupported": (
         "{count} 个旧版 Office 文档只按文件名匹配",
@@ -507,24 +507,73 @@ def epub_units(reader: ZipReader) -> list:
     return units
 
 
-def pdf_units(path: Path, pdftotext: str) -> list:
-    completed = subprocess.run(
-        [pdftotext, "-q", "-enc", "UTF-8", str(path), "-"], capture_output=True, timeout=PDF_TIMEOUT_SECONDS
-    )
-    if completed.returncode != 0:
-        raise DocumentError(f"pdftotext 退出码 {completed.returncode}")
+def detect_pdf_backend() -> tuple[Optional[str], object]:
+    pdftotext = shutil.which("pdftotext")
+    if pdftotext:
+        return "pdftotext", pdftotext
+    if os.environ.get("KC_DISABLE_PYTHON_PDF") == "1":
+        return None, None
+    try:
+        import fitz  # type: ignore
+        if hasattr(fitz, "TOOLS") and hasattr(fitz.TOOLS, "mupdf_display_errors"):
+            fitz.TOOLS.mupdf_display_errors(False)
+        return "fitz", fitz
+    except Exception:
+        pass
+    try:
+        import logging
+        import pypdf  # type: ignore
+        logging.getLogger("pypdf").setLevel(logging.ERROR)
+        return "pypdf", pypdf
+    except Exception:
+        return None, None
+
+
+def _pages_to_units(pages: Iterable[str]) -> list:
     units = []
-    for page, text in enumerate(completed.stdout.decode("utf-8", errors="replace").split("\f"), start=1):
-        for line in text.splitlines():
+    for page, text in enumerate(pages, start=1):
+        for line in (text or "").splitlines():
             line = " ".join(line.split())
             if line:
                 units.append((f"第 {page} 页", line))
     return units
 
 
-def extract_units(path: Path, suffix: str, pdftotext: Optional[str]) -> list:
+def pdf_units(path: Path, backend: tuple[Optional[str], object]) -> list:
+    kind, handle = backend
+    if kind == "pdftotext":
+        completed = subprocess.run(
+            [str(handle), "-q", "-enc", "UTF-8", str(path), "-"], capture_output=True, timeout=PDF_TIMEOUT_SECONDS
+        )
+        if completed.returncode != 0:
+            raise DocumentError(f"pdftotext 退出码 {completed.returncode}")
+        return _pages_to_units(completed.stdout.decode("utf-8", errors="replace").split("\f"))
+    if kind == "fitz":
+        try:
+            with handle.open(str(path)) as doc:
+                if doc.is_encrypted:
+                    raise DocumentError("PDF 已加密")
+                return _pages_to_units(page.get_text("text") for page in doc)
+        except DocumentError:
+            raise
+        except Exception as exc:
+            raise DocumentError(f"PyMuPDF 解析失败：{exc}") from exc
+    if kind == "pypdf":
+        try:
+            reader = handle.PdfReader(str(path))
+            if reader.is_encrypted:
+                raise DocumentError("PDF 已加密")
+            return _pages_to_units((page.extract_text() or "") for page in reader.pages)
+        except DocumentError:
+            raise
+        except Exception as exc:
+            raise DocumentError(f"pypdf 解析失败：{exc}") from exc
+    raise DocumentError("无可用 PDF 解析后端")
+
+
+def extract_units(path: Path, suffix: str, pdf_backend: tuple[Optional[str], object]) -> list:
     if suffix == ".pdf":
-        return pdf_units(path, pdftotext)
+        return pdf_units(path, pdf_backend)
     with zipfile.ZipFile(path) as archive:
         extractor = {".docx": docx_units, ".pptx": pptx_units, ".xlsx": xlsx_units}.get(suffix, epub_units)
         return extractor(ZipReader(archive))
@@ -572,7 +621,7 @@ def analyze(lines: list, query: Query, detect_headings: bool) -> tuple:
 
 
 def load_document(
-    path: Path, root: Path, query: Query, max_bytes: int, pdftotext: Optional[str], corpus: Corpus
+    path: Path, root: Path, query: Query, max_bytes: int, pdf_backend: tuple[Optional[str], object], corpus: Corpus
 ) -> Optional[Document]:
     relative = path.relative_to(root)
     suffix = path.suffix.casefold()
@@ -586,12 +635,12 @@ def load_document(
                 lines = path.read_text(encoding="utf-8-sig", errors="replace").splitlines()
         elif suffix in FILENAME_ONLY_EXTENSIONS:
             reason = "unsupported"
-        elif suffix == ".pdf" and not pdftotext:
-            reason = "no_pdftotext"
+        elif suffix == ".pdf" and pdf_backend[0] is None:
+            reason = "no_pdf_backend"
         elif size > MAX_DOCUMENT_BYTES:
             reason = "too_large"
         else:
-            units = extract_units(path, suffix, pdftotext)
+            units = extract_units(path, suffix, pdf_backend)
             labels = [label for label, _ in units]
             lines = [text for _, text in units]
     except READ_ERRORS:
@@ -746,10 +795,10 @@ def main(argv: Optional[list] = None) -> int:
         print("错误：查询中没有可检索的词", file=sys.stderr)
         return 2
 
-    pdftotext = shutil.which("pdftotext")
+    pdf_backend = detect_pdf_backend()
     corpus = Corpus()
     for path in iter_candidates(root, args.include_hidden, args.exclude):
-        document = load_document(path, root, query, args.max_bytes, pdftotext, corpus)
+        document = load_document(path, root, query, args.max_bytes, pdf_backend, corpus)
         if document:
             corpus.documents.append(document)
     weights = term_weights(query, corpus.documents, corpus.total)

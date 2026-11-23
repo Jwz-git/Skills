@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """只读审计本地论文笔记的图片附件，规则来自 paper-memory profile。
 
-退出码：0 未发现需修复的问题；1 存在断链、歧义、位置不符、无法读取的笔记，
-或与 attachments.link_style 不一致的 Wiki 嵌入；2 参数或 profile 错误。
+退出码：0 未发现需修复的问题；1 存在断链、歧义、位置不符、同篇重复引用、行内嵌图、
+无法读取的笔记，或与 attachments.link_style 不一致的 Wiki 嵌入；2 参数或 profile 错误。
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import json
 import os
 import re
 import unicodedata
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Iterator, Optional
 from urllib.parse import unquote
@@ -31,7 +31,7 @@ MARKDOWN_IMAGE_RE = re.compile(
     r"(?:\s+(?:\"[^\"\n]*\"|'[^'\n]*'))?\s*\)"
 )
 WIKI_EMBED_RE = re.compile(r"!\[\[([^\[\]|#^\n]+)(?:[#^][^\[\]|\n]*)?(?:\|[^\[\]\n]*)?\]\]")
-HTML_IMAGE_RE = re.compile(r"<img\b[^>]*?\bsrc\s*=\s*(?:\"([^\"]*)\"|'([^']*)')", re.IGNORECASE)
+HTML_IMAGE_RE = re.compile(r"<img\b[^>]*?\bsrc\s*=\s*(?:\"([^\"]*)\"|'([^']*)')[^>]*>", re.IGNORECASE)
 SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]+:")
 FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`)((?:(?!\n[ \t]*\n).)+?)(?<!`)\1(?!`)", re.DOTALL)
@@ -56,7 +56,7 @@ def find_vault_root(memory_root: Path) -> Optional[Path]:
     return None
 
 
-def strip_code(text: str) -> str:
+def strip_code_preserving_lines(text: str) -> list[str]:
     kept: list[str] = []
     fence: Optional[str] = None
     for line in text.splitlines():
@@ -70,17 +70,28 @@ def strip_code(text: str) -> str:
         if indent <= 3 and stripped and set(stripped) == {fence[0]} and len(stripped) >= len(fence):
             fence = None
         kept.append("")
-    return INLINE_CODE_RE.sub(" ", "\n".join(kept))
+    joined = "\n".join(kept)
+    # Replace inline code spans with spaces while preserving newlines so line numbers stay exact
+    masked = INLINE_CODE_RE.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), joined)
+    return masked.splitlines()
 
 
-def extract_references(text: str) -> list[tuple[str, str]]:
-    text = strip_code(text)
-    found = [("markdown", match.group(1)) for match in MARKDOWN_IMAGE_RE.finditer(text)]
-    found += [("wiki", match.group(1).strip()) for match in WIKI_EMBED_RE.finditer(text)]
-    found += [
-        ("html", html.unescape(match.group(1) if match.group(1) is not None else match.group(2)))
-        for match in HTML_IMAGE_RE.finditer(text)
-    ]
+def extract_references(text: str) -> list[tuple[str, str, int, bool]]:
+    orig_lines = text.splitlines()
+    masked_lines = strip_code_preserving_lines(text)
+    found: list[tuple[str, str, int, bool]] = []
+    for line_no, (orig_line, line) in enumerate(zip(orig_lines, masked_lines), start=1):
+        stripped_orig = orig_line.strip()
+        for match in MARKDOWN_IMAGE_RE.finditer(line):
+            is_inline = stripped_orig != match.group(0).strip()
+            found.append(("markdown", match.group(1), line_no, is_inline))
+        for match in WIKI_EMBED_RE.finditer(line):
+            is_inline = stripped_orig != match.group(0).strip()
+            found.append(("wiki", match.group(1).strip(), line_no, is_inline))
+        for match in HTML_IMAGE_RE.finditer(line):
+            raw = html.unescape(match.group(1) if match.group(1) is not None else match.group(2))
+            is_inline = stripped_orig != match.group(0).strip()
+            found.append(("html", raw, line_no, is_inline))
     return found
 
 
@@ -165,6 +176,8 @@ def audit(memory_root: Path, scopes: list[str], profile: dict) -> dict:
     broken: list[dict[str, str]] = []
     ambiguous: list[dict[str, object]] = []
     wiki_embeds: list[dict[str, str]] = []
+    duplicate_references: list[dict[str, object]] = []
+    inline_images: list[dict[str, object]] = []
     unreadable: list[str] = []
     scanned = 0
     reference_count = 0
@@ -177,16 +190,21 @@ def audit(memory_root: Path, scopes: list[str], profile: dict) -> dict:
                 unreadable.append(display(note))
             continue
         scanned += int(reported)
-        for syntax, raw in extract_references(text):
+        note_image_counts: Counter[Path] = Counter()
+        for syntax, raw, line_no, is_inline in extract_references(text):
             target = link_path(syntax, raw)
             if not target or Path(target).suffix.lower() not in IMAGE_EXTENSIONS:
                 continue
             image, candidates, reason = resolver.resolve(note, syntax, target)
             if image is not None:
                 references[image].add(note)
+                if reported:
+                    note_image_counts[image] += 1
             if not reported:
                 continue
             reference_count += 1
+            if is_inline:
+                inline_images.append({"note": display(note), "line": line_no, "target": raw, "syntax": syntax})
             if syntax == "wiki":
                 wiki_embeds.append({"note": display(note), "target": raw})
             if image is not None:
@@ -196,6 +214,10 @@ def audit(memory_root: Path, scopes: list[str], profile: dict) -> dict:
                 ambiguous.append({**entry, "candidates": [display(path) for path in candidates]})
             else:
                 broken.append({**entry, "reason": reason})
+        if reported:
+            for image, count in sorted(note_image_counts.items()):
+                if count > 1:
+                    duplicate_references.append({"note": display(note), "image": display(image), "count": count})
 
     pattern = profile["attachments"].get("root_pattern")
     shared: list[dict[str, object]] = []
@@ -221,7 +243,8 @@ def audit(memory_root: Path, scopes: list[str], profile: dict) -> dict:
         "image_files": len(scoped_images), "image_references": reference_count,
         "unique_referenced_images": len(referenced_from_scope),
         "broken_references": broken, "ambiguous_references": ambiguous, "unreadable_notes": unreadable,
-        "wiki_embeds": wiki_embeds, "shared_images": shared, "misplaced_images": misplaced,
+        "wiki_embeds": wiki_embeds, "duplicate_references": duplicate_references, "inline_images": inline_images,
+        "shared_images": shared, "misplaced_images": misplaced,
         "unreferenced_images": [display(image) for image in scoped_images if image not in references],
     }
 
@@ -270,6 +293,7 @@ def main() -> int:
     fails = bool(
         report["broken_references"] or report["ambiguous_references"]
         or report["misplaced_images"] or report["unreadable_notes"]
+        or report["duplicate_references"] or report["inline_images"]
     )
     if attachments.get("link_style") == "markdown" and report["wiki_embeds"]:
         fails = True
