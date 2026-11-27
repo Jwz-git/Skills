@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 科研项目：本地电脑 ⇄ 远端同步。只在本地电脑上运行。（由 research-project-init skill 生成）
+# 科研项目：本地电脑 ⇄ 远端同步。只在本地电脑上运行。（由 remote-cc-collab skill 生成）
 #
 #   bash <WORK>/sync/sync.sh           同步：先把远端 CC 新建/修改的文件拉回本地，再把本地镜像到远端
 #   bash <WORK>/sync/sync.sh -n        预演：只列出会发生什么，不改任何文件
@@ -13,6 +13,8 @@
 #   视为冲突并停止，什么都不改；FORCE=1 时用远端的版本覆盖。
 # - 被覆盖的本地文件备份到 $WORK/sync_local/backup/<时间>/，推送明细写到 $WORK/sync_local/logs/。
 # - 只同步内容、修改时间和可执行位，不同步属主、属组和其他权限位。超过 MAX_SIZE 的文件不推送。
+# - AGENTS.md 由本地维护，推到远端供 CC 只读参考：远端的改动不拉回，推送时用本地版本覆盖。
+#   CLAUDE.md 两边各自维护，两个方向都不同步（本地的 CLAUDE.md 常是指向 AGENTS.md 的软链）。
 # - CC 正在干活时不要同步。
 set -euo pipefail
 
@@ -39,13 +41,14 @@ COMMON_EXCLUDES=(
   --include=.env.example
   --exclude=.git --exclude=/.venv/ --exclude=/venv/ --exclude=/.claude/ --exclude=/.codex/ --exclude=/.agents/
   --exclude=/.idea/ --exclude=/.vscode/ --exclude=.DS_Store --exclude=.env --exclude='.env.*'
-  --exclude=/AGENTS.md --exclude=/CLAUDE.md
+  --exclude=/CLAUDE.md
   --exclude=/build/ --exclude=/dist/ --exclude='*.egg-info/' --exclude=node_modules/
   --exclude=/$STAMP --exclude=/$MANIFEST --exclude=/$WORK/sync_local/ --exclude=/$WORK/handoff/
   --exclude=__pycache__/ --exclude='*.pyc' --exclude=.pytest_cache/ --exclude=.mypy_cache/ --exclude=.ruff_cache/
   --exclude='*.pt' --exclude='*.pth' --exclude='*.ckpt' --exclude='*.safetensors' --exclude='*.pkl'
   --exclude='*.onnx' --exclude='*.h5'
 )
+PUSH_ONLY=(AGENTS.md)            # 只从本地推到远端的文件：远端的改动不拉回，推送时被本地版本覆盖
 
 # 在远端执行的脚本：scan 列出参与比较的文件（跳过隐藏文件、__pycache__ 和远端自己维护的 CLAUDE.md）
 REMOTE_LIB='
@@ -104,9 +107,22 @@ if [[ -n "$candidates" ]]; then
   differ=$(printf '%s\n' "$items" | awk '/^>f/ && !/^>f\+\+\+/ { sub(/^[^ ]+ /, ""); print }')
 fi
 
+# 只读文件（PUSH_ONLY）内容有变也不拉回、不算冲突，推送时用本地版本覆盖
+overwritten=""
+for f in "${PUSH_ONLY[@]}"; do
+  if grep -qxF -- "$f" <<<"$pending"; then
+    overwritten+="  $f"$'\n'
+    pending=$(grep -vxF -- "$f" <<<"$pending" || true)
+    differ=$(grep -vxF -- "$f" <<<"$differ" || true)
+  fi
+done
+
 if [[ -n "$deleted" ]]; then
   echo "== 注意：CC 在远端删除了以下文件（规则不允许删除），本次推送会从本地恢复它们："
   echo "$deleted" | sed 's/^/  /'
+fi
+if [[ -n "$overwritten" ]]; then
+  printf '== 注意：CC 在远端改了只读文件（规则不允许），本次推送会用本地版本覆盖（本地没有的会删除）：\n%s' "$overwritten"
 fi
 
 if [[ "$cmd" == status ]]; then

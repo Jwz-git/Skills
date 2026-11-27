@@ -20,6 +20,8 @@ later() { touch -d "@$(( $(date +%s) + $1 ))" "${@:2}"; }
 snap() { (cd "$1" && find . -type f ! -name .sync-manifest -exec md5sum {} + | sort -k2); }
 same_snap() { [[ "$(snap "$1")" == "$2" ]]; }
 content() { [[ "$(cat "$1" 2>/dev/null)" == "$2" ]]; }
+has() { grep -q -- "$1" <<<"$out"; }   # 在上一次保存的输出 $out 里找文字
+lacks() { ! grep -q -- "$1" <<<"$out"; }
 
 rm -rf "$T/local" "$T/remote"; L="$T/local"; R="$T/remote"; W="$WORK"
 SYNC="$L/$W/sync/sync.sh"
@@ -31,11 +33,11 @@ for f in "${SANITY[@]}"; do mkdir -p "$L/$(dirname "$f")"; [[ -e "$L/$f" ]] || e
 cp "$SCRIPT" "$SYNC"
 echo a > "$L/src/a.py"; echo b > "$L/src/b.py"; echo old > "$L/src/gone.py"; echo k > "$L/src/keep.py"
 echo cfg > "$L/$W/Ext/.git/config"; echo ext > "$L/$W/Ext/main.py"
-echo tex > "$L/paper/main.tex"; echo agents > "$L/AGENTS.md"; echo w > "$L/src/model.pt"
+echo tex > "$L/paper/main.tex"; echo agents > "$L/AGENTS.md"; ln -s AGENTS.md "$L/CLAUDE.md"; echo w > "$L/src/model.pt"
 truncate -s "$MAX_SIZE" "$L/src/big.dat"; truncate -s +1 "$L/src/big.dat"   # 比 MAX_SIZE 多 1 字节
 
-# ---- 远端：用户手动拷过一份（不含嵌套 .git、paper、AGENTS.md、权重、大文件），然后 CC 初始化 ----
-mkdir -p "$R"; (cd "$L" && tar cf - --exclude=.git --exclude=paper --exclude=AGENTS.md --exclude=model.pt --exclude=big.dat .) | (cd "$R" && tar xf -)
+# ---- 远端：用户手动拷过一份（不含嵌套 .git、paper、AGENTS.md、本地的 CLAUDE.md 软链、权重、大文件），然后 CC 初始化 ----
+mkdir -p "$R"; (cd "$L" && tar cf - --exclude=.git --exclude=paper --exclude=AGENTS.md --exclude=CLAUDE.md --exclude=model.pt --exclude=big.dat .) | (cd "$R" && tar xf -)
 touch "$R/$W/.sync-stamp"; echo claude > "$R/CLAUDE.md"; mkdir -p "$R/$W/handoff"
 echo a-cc > "$R/src/a.py"; later 5 "$R/src/a.py"
 later 5 "$R/$W/sync/sync.sh"            # 内容相同、时间更新（模拟用户 scp 取回脚本）
@@ -55,10 +57,11 @@ R1=$(snap "$R"); run -n >/dev/null 2>&1
 check "预演后远端未变" same_snap "$R" "$R1"
 check "正式同步成功" run
 check "嵌套 .git 未推送" test ! -e "$R/$W/Ext/.git"
-check "paper/、AGENTS.md 未推送" test ! -e "$R/paper" -a ! -e "$R/AGENTS.md"
+check "paper/ 未推送" test ! -e "$R/paper"
+check "AGENTS.md 已推到远端" content "$R/AGENTS.md" agents
 check "权重 *.pt 未推送" test ! -e "$R/src/model.pt"
 check "超过 MAX_SIZE 的文件未推送" test ! -e "$R/src/big.dat"
-check "远端的 CLAUDE.md 保留" content "$R/CLAUDE.md" claude
+check "远端的 CLAUDE.md 保留，本地的 CLAUDE.md 软链未推送" content "$R/CLAUDE.md" claude
 check "远端空的 handoff/ 保留" test -d "$R/$W/handoff"
 check "本地删除的 gone.py 在远端也删除" test ! -e "$R/src/gone.py"
 check "远端已写清单" test -f "$R/$W/.sync-manifest"
@@ -83,15 +86,23 @@ FORCE=1 run >/dev/null 2>&1
 check "FORCE=1 用远端版本覆盖" content "$L/src/a.py" a-cc3
 check "本地旧版已备份" bash -c "cat '$L/$W'/sync_local/backup/*/src/a.py | grep -qx a-l3"
 
-echo "E. CC 违规删除文件"
-rm "$R/src/keep.py"
-check "同步时提示 CC 删除了文件" bash -c "out=\$(SYNC_REMOTE= SYNC_REMOTE_DIR='$R' bash '$SYNC'); grep -q 'CC 在远端删除' <<<\"\$out\""
+echo "E. CC 违规：删除文件、修改只读的 AGENTS.md"
+rm "$R/src/keep.py"; echo agents-cc > "$R/AGENTS.md"
+out=$(run 2>&1)
+check "同步时提示 CC 删除了文件" has 'CC 在远端删除'
 check "被删文件已从本地恢复" content "$R/src/keep.py" k
+check "同步时提示 CC 改了只读文件" has 'CC 在远端改了只读文件'
+check "本地 AGENTS.md 未被远端版本覆盖" content "$L/AGENTS.md" agents
+check "远端的 AGENTS.md 已恢复为本地版本" content "$R/AGENTS.md" agents
 
 echo "F. 本地删掉已拉回的交接，远端原件保留；之后无待拉回改动"
 rm "$L/$W/handoff/20260101-1100-x.md"; run >/dev/null 2>&1
 check "远端交接原件保留" test -e "$R/$W/handoff/20260101-1100-x.md"
-check "status 显示没有待拉回改动" bash -c "out=\$(SYNC_REMOTE= SYNC_REMOTE_DIR='$R' bash '$SYNC' status); grep -q 没有未拉回 <<<\"\$out\""
+later 30 "$R/AGENTS.md"                 # 只改修改时间、内容不变
+out=$(run status 2>&1)
+check "status 显示没有待拉回改动" has 没有未拉回
+check "AGENTS.md 只改了修改时间，不算改了只读文件" lacks 只读文件
+run >/dev/null 2>&1                     # 再同步一次，让两边重新一致，免得影响 G 的计数
 
 echo "G. 推送汇总计数"
 echo b333 > "$L/src/b.py"; echo n > "$L/src/new.py"; touch -d 2026-01-01 "$L/src/keep.py"

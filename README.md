@@ -1,6 +1,6 @@
 # Skills
 
-一组面向个人知识管理、学术论文阅读与科研协作的 Agent Skills，覆盖网页原文归档、本地知识库问答与沉淀、Markdown 元数据批量整理、论文无损逐段伴读、论文精读笔记维护，以及科研项目的多机协作初始化。
+一组面向个人知识管理、学术论文阅读与科研协作的 Agent Skills，覆盖网页原文归档、本地知识库问答与沉淀、Markdown 元数据批量整理、论文无损逐段伴读、论文精读笔记维护，以及科研项目的规则初始化与多机协同。
 
 ## 包含内容
 
@@ -11,7 +11,8 @@
 | [`metadata-tidy`](./metadata-tidy/) | 批量审计与整理技术型 Obsidian/Markdown 笔记的 YAML frontmatter，并校验正文和无关字段零改动 | 审计报告或受控 frontmatter 修改 |
 | [`paper-memory`](./paper-memory/) | 将学术论文整理为结构化精读笔记（Memory），支持主动回忆复习、论文关联、横向对比、理解更新与图片附件维护 | Markdown / Obsidian / Notion 论文笔记 |
 | [`paper-tutor`](./paper-tutor/) | 面向初学者的学术论文无损伴读与逐段精讲，覆盖概览、术语、逐段译解、图表/表格拆解、公式推导与伪代码讲解 | 纯对话分节伴读（默认不落盘） |
-| [`research-project-init`](./research-project-init/) | 为科研项目搭建“本地主副本 + GPU 服务器跑实验 + 远端 Claude Code 只做分析和改写代码”的协作环境，研究在 git 忽略目录中进行、效果好再抬升 | 本地运行的同步脚本、远端 `CLAUDE.md`、交接目录与本地 `AGENTS.md` 规则 |
+| [`research-project-init`](./research-project-init/) | 为科研项目起草或整理 `AGENTS.md` 与研究目录约定：研究在 git 忽略目录中进行、效果好再抬升，规则分为所有 Agent 共用的项目约定与本地执行规则 | `AGENTS.md`（远端镜像上为交接草稿）与研究目录索引 |
+| [`remote-cc-collab`](./remote-cc-collab/) | 让本地编码 Agent 与远端（云端）Claude Code 协同：本地主副本 + GPU 服务器跑实验 + 远端 Claude Code 只做分析和改写代码，双方通过交接文件传递任务与结果 | 本地运行的同步脚本、远端精简 `CLAUDE.md`、交接目录与本地 `AGENTS.md` 协作一节 |
 
 各技能的完整触发条件、工作流与边界约束见对应目录的 `SKILL.md`。
 
@@ -19,7 +20,7 @@
 
 - **读懂论文 → 沉淀复习**：初次精读论文或卡在英文段落、公式、图表时，先用 [`paper-tutor`](./paper-tutor/SKILL.md) 逐段伴读（默认不写文件）；读透后交给 [`paper-memory`](./paper-memory/SKILL.md) 压缩为长期复习笔记、做主动回忆考查、维护论文关联或管理图片附件。`paper-tutor` 的定位脚本会自动识别资料库中的 `.paper-memory.json`，优先检索其中配置的本地论文目录。
 - **原样归档 → 知识整合**：要把网页内容忠实保存下来留档时用 [`article-archiver`](./article-archiver/SKILL.md)；要基于本地知识库回答问题，并把新学到的稳定概念融入既有主题笔记时用 [`knowledge-curator`](./knowledge-curator/SKILL.md)。
-- **多机科研协作**：本地电脑保存主副本并由本地编码 Agent（如 Codex）调度 GPU 服务器跑实验，远程服务器上的 Claude Code 负责分析与改写代码时，用 [`research-project-init`](./research-project-init/SKILL.md) 初始化项目：同步脚本不经过 git，双方通过交接文件传递任务与结果。
+- **科研项目规则 → 多机协同**：新开科研项目或整理已有项目的规则时，用 [`research-project-init`](./research-project-init/SKILL.md) 起草 `AGENTS.md` 和研究目录约定；本地电脑保存主副本并由本地编码 Agent（如 Codex）调度 GPU 服务器跑实验、远端服务器上的 Claude Code 负责分析与改写代码时，再用 [`remote-cc-collab`](./remote-cc-collab/SKILL.md) 配好同步脚本、远端 `CLAUDE.md` 与交接流程。两者都在远端时，`AGENTS.md` 草稿以交接形式交给本地 Agent 落地。
 - **批量治理元数据 → 维护论文体系**：跨目录盘点、重命名、合并或校验通用 frontmatter 字段时用 [`metadata-tidy`](./metadata-tidy/SKILL.md)；设计论文专属标签体系、笔记结构与文献关系时用 [`paper-memory`](./paper-memory/SKILL.md)。
 
 ## 技能详情
@@ -59,10 +60,18 @@
 
 ### `research-project-init`
 
-- 在运行 Claude Code 的远端执行：先建同步基线，再了解项目、配置并测试同步脚本、按模板写远端专用 `CLAUDE.md`、建立交接目录，最后给出本地 Agent 的首次同步说明与 `AGENTS.md` 协作规则；个人项目不使用本技能，直接用 git 中转。
-- 同步脚本在本地运行：先把远端新建或修改的文件拉回本地，再以 `--delete` 将本地镜像到远端；按清单而非时间先后识别远端改动，不受时钟偏差影响；同名文件两边都改过时停止并提示，覆盖前自动备份；排除嵌套 `.git`、权重扩展名与超过 `MAX_SIZE` 的文件；只同步内容、修改时间与可执行位。
-- 模板：[`templates/sync.sh`](./research-project-init/templates/sync.sh)（同步脚本，主机与路径默认为 `CHANGE_ME`，未配置时拒绝运行）、[`templates/CLAUDE.md`](./research-project-init/templates/CLAUDE.md)（远端工作规则）、[`templates/AGENTS-snippet.md`](./research-project-init/templates/AGENTS-snippet.md)（本地协作规则片段）；设计取舍与已知坑见 [`references/sync-design.md`](./research-project-init/references/sync-design.md)。
-- 配套脚本：[`scripts/test_sync.sh`](./research-project-init/scripts/test_sync.sh)（在单机上模拟两端，对同步脚本逐项断言首次同步冲突、预演无副作用、排除项、清单识别、时钟偏差、冲突与强制覆盖、删除恢复等场景）。
+- 先判断运行位置：在本地主副本（有 `.git`）里直接写 `AGENTS.md` 和研究目录；在远端镜像里写成交接，由本地 Agent 落地；项目刚拷到远端、还没建同步基线时，先交给 `remote-cc-collab`。
+- `AGENTS.md` 分「一、项目约定」（主线口径、实验口径、讨论与决策、目录与抬升、实现与验证，所有 Agent 都遵守）和「二、本地执行」（运行实验、GPU 服务器、git、阶段记录、论文，只由主副本上的 Agent 执行），只读的 Agent 读到全文也不会越界。
+- 整理已有 `AGENTS.md` 时不整体替换，按写法要点逐节归位、改写，并列出移动、改写、新增、删除的条目：只写规则和现状不写历史、主线口径不重复 README、服务器只记 SSH 别名、rsync 示例不带结尾斜杠等。
+- 模板：[`templates/AGENTS.md.tmpl`](./research-project-init/templates/AGENTS.md.tmpl)。
+
+### `remote-cc-collab`
+
+- 在运行 Claude Code 的远端执行：先建同步基线，再了解项目、配置并测试同步脚本、写远端精简 `CLAUDE.md`、写交接让本地 Agent 补上协作一节，最后给出首次同步说明；还包括旧写法 `CLAUDE.md` 与同步脚本的迁移；个人项目不使用本技能，直接用 git 中转。
+- 规则只有一份：远端 `CLAUDE.md` 以 `@AGENTS.md` 引入本地推来的项目规则，自身只写远端的角色限制（只分析和改代码、不运行、不用 git、不改 `AGENTS.md`）、缺失内容与交接格式；与 `AGENTS.md` 冲突时在远端以 `CLAUDE.md` 为准。
+- 同步脚本在本地运行：先把远端新建或修改的文件拉回本地，再以 `--delete` 将本地镜像到远端；按清单而非时间先后识别远端改动，不受时钟偏差影响；同名文件两边都改过时停止并提示，覆盖前自动备份；排除嵌套 `.git`、权重扩展名与超过 `MAX_SIZE` 的文件；只同步内容、修改时间与可执行位；`AGENTS.md` 只推不拉（远端改动会提示并被本地版本覆盖），两边的 `CLAUDE.md` 各自维护、都不同步。
+- 模板：[`templates/sync.sh`](./remote-cc-collab/templates/sync.sh)（同步脚本，主机与路径默认为 `CHANGE_ME`，未配置时拒绝运行）、[`templates/CLAUDE.md.tmpl`](./remote-cc-collab/templates/CLAUDE.md.tmpl)（远端工作规则）、[`templates/AGENTS-section.md.tmpl`](./remote-cc-collab/templates/AGENTS-section.md.tmpl)（本地 `AGENTS.md` 的「与远端 Claude Code 协作」一节）；模板用 `.tmpl` 后缀，免得被 Claude Code 当成目录规则自动加载；设计取舍与已知坑见 [`references/sync-design.md`](./remote-cc-collab/references/sync-design.md)。
+- 配套脚本：[`scripts/test_sync.sh`](./remote-cc-collab/scripts/test_sync.sh)（在单机上模拟两端，对同步脚本逐项断言首次同步冲突、预演无副作用、排除项、`AGENTS.md` 只推不拉、清单识别、时钟偏差、冲突与强制覆盖、删除恢复等场景）。
 
 ## 安装
 
@@ -75,7 +84,7 @@ mkdir -p ~/.claude/skills
 ln -s "$PWD/paper-tutor" ~/.claude/skills/paper-tutor
 
 # 或批量安装全部技能
-for skill in article-archiver knowledge-curator metadata-tidy paper-memory paper-tutor research-project-init; do
+for skill in article-archiver knowledge-curator metadata-tidy paper-memory paper-tutor research-project-init remote-cc-collab; do
   ln -s "$PWD/$skill" ~/.claude/skills/"$skill"
 done
 ```
@@ -93,7 +102,7 @@ done
   未安装时，脚本返回退出码 `2`，Agent 会自动回退到原生 PDF 读取能力；`locate` 子命令仅依赖标准库。
 - **`knowledge-curator`**：DOCX、PPTX、XLSX、EPUB 直接由标准库解析；检索 PDF 正文时依次尝试 `PATH` 中的 `pdftotext`、`PyMuPDF`（`fitz`）和 `pypdf`，三者均不可用时降级为仅按文件名匹配。
 - **`paper-memory`**：所有自带脚本仅依赖标准库；从 PDF 渲染裁剪图片附件时，按需调用环境中已有的渲染工具（如 `PyMuPDF`、`pypdfium2` 或 `pdftoppm`）。
-- **`research-project-init`**：同步脚本需要 Bash、ssh，以及本地与远端都安装 GNU rsync 3.x（macOS 自带的 openrsync 不可用，请 `brew install rsync`；Windows 请在 WSL 中运行）；远端需要 GNU findutils。`tests/` 中的端到端场景依赖 GNU 工具，仅在 Linux 上运行，其余平台自动跳过。
+- **`remote-cc-collab`**：同步脚本需要 Bash、ssh，以及本地与远端都安装 GNU rsync 3.x（macOS 自带的 openrsync 不可用，请 `brew install rsync`；Windows 请在 WSL 中运行）；远端需要 GNU findutils。`tests/` 中的端到端场景依赖 GNU 工具，仅在 Linux 上运行，其余平台自动跳过。
 
 ## 目录约定
 
@@ -111,7 +120,7 @@ done
 
 ## 测试与评测
 
-运行所有技能的单元测试（其中 `paper-tutor/tests` 需要已安装 `pymupdf`，`research-project-init/tests` 需要 Linux 与 GNU rsync 3.x，不满足时自动跳过）：
+运行所有技能的单元测试（其中 `paper-tutor/tests` 需要已安装 `pymupdf`，`remote-cc-collab/tests` 需要 Linux 与 GNU rsync 3.x，不满足时自动跳过）：
 
 ```bash
 for dir in */tests; do
