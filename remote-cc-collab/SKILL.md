@@ -1,13 +1,14 @@
 ---
 name: remote-cc-collab
 description: >-
-  让本地编码 Agent（如 Codex）和云端服务器（下称"远端"）上的 Claude Code 协同做科研项目。本地是主副本（git、AGENTS.md、论文），
-  GPU 服务器跑实验，远端的 Claude Code 只做分析和改写代码，产出通过交接文件转给本地 Agent。本技能在远端运行，负责：
-  安装在本地执行的 rsync 同步脚本（先拉回 Claude Code 的改动再镜像本地，含冲突检测、备份和大文件拦截，AGENTS.md 只推不拉）；
-  写远端专用的精简 CLAUDE.md（用 @AGENTS.md 引入项目规则，只补远端的角色限制和交接格式）；建交接目录；给出首次同步步骤。
+  给已经初始化的科研项目补上协作内容，让本地编码 Agent（如 Codex）和云端服务器（下称"远端"）上的 Claude Code 协同工作。
+  本地是主副本（git、AGENTS.md、论文），GPU 服务器跑实验，远端的 Claude Code 只做分析和改写代码，产出通过交接文件转给本地 Agent。
+  本技能在远端运行，补上四样东西：在本地执行的 rsync 同步脚本（先拉回 Claude Code 的改动再镜像本地，含冲突检测、备份和大文件拦截，
+  AGENTS.md 只推不拉）；远端专用的精简 CLAUDE.md（用 @AGENTS.md 引入项目规则，只补远端的角色限制和交接格式）；交接目录；
+  本地 AGENTS.md 里的「与远端 Claude Code 协作」一节（写成交接，由本地 Agent 合并）。最后给出首次同步步骤。
   当用户说"把项目同步到云端或服务器给 Claude Code 用""配同步脚本""本地 Agent 和云端 CC 怎么协同""Claude Code 和 Codex 怎么分工"时使用；
   排查或修改已有项目的同步脚本、解读同步冲突和预演输出、调整交接格式、把旧写法的 CLAUDE.md 迁到新写法时也使用。
-  起草项目规则 AGENTS.md 和研究目录用 research-project-init。个人项目或普通软件项目直接用 git 中转，不用本技能。
+  项目的基础规则 AGENTS.md 和研究目录由 research-project-init 在本地初始化。个人项目或普通软件项目直接用 git 中转，不用本技能。
 ---
 
 # 本地 Agent 与远端 Claude Code 协同
@@ -27,7 +28,7 @@ description: >-
 - **Claude Code 的产出通过交接传递**。每个任务结束时，Claude Code 在 `<WORK>/handoff/` 写交接，同步时拉回本地，用户让本地 Agent 读交接去执行。
 - **本地是主副本**。同步时先拉回远端的改动（遇到冲突就停下），再把本地镜像到远端。
 
-本技能假设项目以 `<WORK>` 为研究目录、以 `AGENTS.md` 为规则来源。项目还没有这些时，初始化时一并用 research-project-init 起草；在远端，它会把草稿写成交接。
+本技能是在已经初始化的项目上补协作内容：它假设项目已有被 git 忽略的 `<WORK>` 和本地的 `AGENTS.md`，通常是用 research-project-init 在本地主副本里配好的。还没有的，建议用户先在本地完成初始化再来。用户想先配协作也可以，同步脚本、`CLAUDE.md` 和交接目录都不依赖 `AGENTS.md`。
 
 如果用户说的是个人项目或普通软件项目，告诉他们这类项目直接用 git 中转就行，不要套用这套流程。
 
@@ -44,6 +45,7 @@ description: >-
 - **项目名**、**`<远端项目目录>`**，以及 **`<REMOTE>`**（本地 `~/.ssh/config` 里的别名也可以）。
 - **研究目录 `WORK`**：默认 `temp`，必须已被 `.gitignore` 忽略。否则交接文件和同步记录会出现在本地的 `git status` 里。
 - **只留本地、不进远端的东西**：参照 `.gitignore` 逐项判断。论文目录默认只留本地，需要核对论文时由用户提供摘录。
+- **本地的 `AGENTS.md`**：有没有，分没分成「一、项目约定」和「二、本地执行」两部分。首次同步前远端还看不到它，问用户，或者请本地 Agent 报告。
 - **本地是 macOS、Linux 还是 Windows**：Windows 需要在 WSL 里运行脚本。
 
 ### 2. 先建基线，再写任何文件
@@ -108,20 +110,20 @@ bash <本技能目录>/scripts/test_sync.sh <远端项目目录>/<WORK>/sync/syn
 - 确认 `AGENTS.md` 分成了「一、项目约定」和「二、本地执行」两部分；没分的话，按它的实际章节改写引入后的那段说明；
 - 确认交接相关的说法两边一致。
 
-### 6. 建交接目录，补上本地的协作规则
+### 6. 建交接目录，补上 `AGENTS.md` 的协作一节
 
 ```bash
 mkdir -p <远端项目目录>/<WORK>/handoff
 ```
 
-本地的 `AGENTS.md` 需要加上协作一节，骨架是 `templates/AGENTS-section.md.tmpl`。把第 1、3、4 步已经确定的值填进去，GPU 服务器信息这类远端看不到的保留占位符。
+本地的 `AGENTS.md` 要补上「与远端 Claude Code 协作」一节，骨架是 `templates/AGENTS-section.md.tmpl`。`AGENTS.md` 只在本地维护，远端写不了，所以写成交接 `<WORK>/handoff/<YYYYMMDD-HHMM>-setup-collab.md`，由本地 Agent 合并：
 
-- 这次如果也用 research-project-init 起草了整份 `AGENTS.md`，把这一节直接放进草稿「二、本地执行」的开头，只写一份交接。
-- 否则写 `<WORK>/handoff/<YYYYMMDD-HHMM>-setup-collab.md`：
-  - 「交给本地 Agent 的任务」：把附录里的一节合并进本地 `AGENTS.md`（已有类似的一节就替换），并改掉原有条目里和它冲突的说法；
-  - 附录：填好的片段，用四个反引号的代码块包住。
-
-  交接的其余几节按 `CLAUDE.md` 里的交接格式写，没有内容的写"无"。
+- **附录**：填好的一节。把第 1、3、4 步已经确定的值填进去，`<smoke>` 这类远端看不到的保留占位符。用四个反引号的代码块包住，免得片段里的代码块提前结束它。
+- **「交给本地 Agent 的任务」**：
+  - 把附录里的一节放进 `AGENTS.md`「二、本地执行」的开头。没分两部分的，放在讲运行实验的那几节前面；已有类似的一节，就替换它。
+  - 填上剩下的占位符，改掉原有条目里和它冲突的说法，向用户汇报改了哪些地方。
+  - 本地还没有 `AGENTS.md` 时，先建一份只含这一节的。以后用 research-project-init 初始化，它会被归入「二」。
+- 交接的其余几节按 `CLAUDE.md` 里的交接格式写，没有内容的写"无"。
 
 然后自查：
 

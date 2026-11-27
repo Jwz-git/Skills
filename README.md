@@ -11,8 +11,8 @@
 | [`metadata-tidy`](./metadata-tidy/) | 批量审计与整理技术型 Obsidian/Markdown 笔记的 YAML frontmatter，并校验正文和无关字段零改动 | 审计报告或受控 frontmatter 修改 |
 | [`paper-memory`](./paper-memory/) | 将学术论文整理为结构化精读笔记（Memory），支持主动回忆复习、论文关联、横向对比、理解更新与图片附件维护 | Markdown / Obsidian / Notion 论文笔记 |
 | [`paper-tutor`](./paper-tutor/) | 面向初学者的学术论文无损伴读与逐段精讲，覆盖概览、术语、逐段译解、图表/表格拆解、公式推导与伪代码讲解 | 纯对话分节伴读（默认不落盘） |
-| [`research-project-init`](./research-project-init/) | 为科研项目起草或整理 `AGENTS.md` 与研究目录约定：研究在 git 忽略目录中进行、效果好再抬升，规则分为所有 Agent 共用的项目约定与本地执行规则 | `AGENTS.md`（远端镜像上为交接草稿）与研究目录索引 |
-| [`remote-cc-collab`](./remote-cc-collab/) | 让本地编码 Agent 与远端（云端）Claude Code 协同：本地主副本 + GPU 服务器跑实验 + 远端 Claude Code 只做分析和改写代码，双方通过交接文件传递任务与结果 | 本地运行的同步脚本、远端精简 `CLAUDE.md`、交接目录与本地 `AGENTS.md` 协作一节 |
+| [`research-project-init`](./research-project-init/) | 在本地主副本中初始化科研项目：写好基础 `AGENTS.md`（所有 Agent 共用的项目约定与本地执行规则），建好研究目录与索引；研究在 git 忽略目录中进行，效果好再抬升 | `AGENTS.md` 与研究目录索引 |
+| [`remote-cc-collab`](./remote-cc-collab/) | 给已初始化的科研项目补上与远端（云端）Claude Code 的协作内容：本地主副本 + GPU 服务器跑实验 + 远端 Claude Code 只做分析和改写代码，双方通过交接文件传递任务与结果 | 本地运行的同步脚本、远端精简 `CLAUDE.md`、交接目录，以及交给本地 Agent 合并的 `AGENTS.md` 协作一节 |
 
 各技能的完整触发条件、工作流与边界约束见对应目录的 `SKILL.md`。
 
@@ -20,7 +20,7 @@
 
 - **读懂论文 → 沉淀复习**：初次精读论文或卡在英文段落、公式、图表时，先用 [`paper-tutor`](./paper-tutor/SKILL.md) 逐段伴读（默认不写文件）；读透后交给 [`paper-memory`](./paper-memory/SKILL.md) 压缩为长期复习笔记、做主动回忆考查、维护论文关联或管理图片附件。`paper-tutor` 的定位脚本会自动识别资料库中的 `.paper-memory.json`，优先检索其中配置的本地论文目录。
 - **原样归档 → 知识整合**：要把网页内容忠实保存下来留档时用 [`article-archiver`](./article-archiver/SKILL.md)；要基于本地知识库回答问题，并把新学到的稳定概念融入既有主题笔记时用 [`knowledge-curator`](./knowledge-curator/SKILL.md)。
-- **科研项目规则 → 多机协同**：新开科研项目或整理已有项目的规则时，用 [`research-project-init`](./research-project-init/SKILL.md) 起草 `AGENTS.md` 和研究目录约定；本地电脑保存主副本并由本地编码 Agent（如 Codex）调度 GPU 服务器跑实验、远端服务器上的 Claude Code 负责分析与改写代码时，再用 [`remote-cc-collab`](./remote-cc-collab/SKILL.md) 配好同步脚本、远端 `CLAUDE.md` 与交接流程。两者都在远端时，`AGENTS.md` 草稿以交接形式交给本地 Agent 落地。
+- **项目初始化 → 补上协作**：新开科研项目或让已有项目接入这套流程时，先在本地主副本里用 [`research-project-init`](./research-project-init/SKILL.md) 写好基础 `AGENTS.md` 和研究目录；需要远端服务器上的 Claude Code 参与分析与改写代码、由本地编码 Agent（如 Codex）调度 GPU 服务器跑实验时，再在远端用 [`remote-cc-collab`](./remote-cc-collab/SKILL.md) 补上同步脚本、远端 `CLAUDE.md`、交接目录和 `AGENTS.md` 的协作一节。
 - **批量治理元数据 → 维护论文体系**：跨目录盘点、重命名、合并或校验通用 frontmatter 字段时用 [`metadata-tidy`](./metadata-tidy/SKILL.md)；设计论文专属标签体系、笔记结构与文献关系时用 [`paper-memory`](./paper-memory/SKILL.md)。
 
 ## 技能详情
@@ -60,14 +60,14 @@
 
 ### `research-project-init`
 
-- 先判断运行位置：在本地主副本（有 `.git`）里直接写 `AGENTS.md` 和研究目录；在远端镜像里写成交接，由本地 Agent 落地；项目刚拷到远端、还没建同步基线时，先交给 `remote-cc-collab`。
+- 在本地主副本（有 `.git`）里运行，只做基础配置：写 `AGENTS.md`、建研究目录与索引，确认 `<WORK>/`、`AGENTS.md`、`CLAUDE.md` 都被 git 忽略，并建议本地 `CLAUDE.md` 软链到 `AGENTS.md`；在没有 `.git` 的远端副本里不写文件。与远端 Claude Code 的协作内容交给 `remote-cc-collab`。
 - `AGENTS.md` 分「一、项目约定」（主线口径、实验口径、讨论与决策、目录与抬升、实现与验证，所有 Agent 都遵守）和「二、本地执行」（运行实验、GPU 服务器、git、阶段记录、论文，只由主副本上的 Agent 执行），只读的 Agent 读到全文也不会越界。
-- 整理已有 `AGENTS.md` 时不整体替换，按写法要点逐节归位、改写，并列出移动、改写、新增、删除的条目：只写规则和现状不写历史、主线口径不重复 README、服务器只记 SSH 别名、rsync 示例不带结尾斜杠等。
+- 已有 `AGENTS.md` 时不整体替换：先备份原文件（它不在 git 里），再按写法要点逐节归位、改写，并列出移动、改写、新增、删除的条目：只写规则和现状不写历史、主线口径不重复 README、服务器只记 SSH 别名、rsync 示例不带结尾斜杠等。
 - 模板：[`templates/AGENTS.md.tmpl`](./research-project-init/templates/AGENTS.md.tmpl)。
 
 ### `remote-cc-collab`
 
-- 在运行 Claude Code 的远端执行：先建同步基线，再了解项目、配置并测试同步脚本、写远端精简 `CLAUDE.md`、写交接让本地 Agent 补上协作一节，最后给出首次同步说明；还包括旧写法 `CLAUDE.md` 与同步脚本的迁移；个人项目不使用本技能，直接用 git 中转。
+- 在运行 Claude Code 的远端执行，给已初始化的项目补协作内容：先建同步基线，再了解项目、配置并测试同步脚本、写远端精简 `CLAUDE.md`、写交接让本地 Agent 把协作一节合并进 `AGENTS.md`，最后给出首次同步说明；还包括旧写法 `CLAUDE.md` 与同步脚本的迁移；个人项目不使用本技能，直接用 git 中转。
 - 规则只有一份：远端 `CLAUDE.md` 以 `@AGENTS.md` 引入本地推来的项目规则，自身只写远端的角色限制（只分析和改代码、不运行、不用 git、不改 `AGENTS.md`）、缺失内容与交接格式；与 `AGENTS.md` 冲突时在远端以 `CLAUDE.md` 为准。
 - 同步脚本在本地运行：先把远端新建或修改的文件拉回本地，再以 `--delete` 将本地镜像到远端；按清单而非时间先后识别远端改动，不受时钟偏差影响；同名文件两边都改过时停止并提示，覆盖前自动备份；排除嵌套 `.git`、权重扩展名与超过 `MAX_SIZE` 的文件；只同步内容、修改时间与可执行位；`AGENTS.md` 只推不拉（远端改动会提示并被本地版本覆盖），两边的 `CLAUDE.md` 各自维护、都不同步。
 - 模板：[`templates/sync.sh`](./remote-cc-collab/templates/sync.sh)（同步脚本，主机与路径默认为 `CHANGE_ME`，未配置时拒绝运行）、[`templates/CLAUDE.md.tmpl`](./remote-cc-collab/templates/CLAUDE.md.tmpl)（远端工作规则）、[`templates/AGENTS-section.md.tmpl`](./remote-cc-collab/templates/AGENTS-section.md.tmpl)（本地 `AGENTS.md` 的「与远端 Claude Code 协作」一节）；模板用 `.tmpl` 后缀，免得被 Claude Code 当成目录规则自动加载；设计取舍与已知坑见 [`references/sync-design.md`](./remote-cc-collab/references/sync-design.md)。
