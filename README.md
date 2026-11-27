@@ -11,7 +11,7 @@
 | [`metadata-tidy`](./metadata-tidy/) | 批量审计与整理技术型 Obsidian/Markdown 笔记的 YAML frontmatter，并校验正文和无关字段零改动 | 审计报告或受控 frontmatter 修改 |
 | [`paper-memory`](./paper-memory/) | 将学术论文整理为结构化精读笔记（Memory），支持主动回忆复习、论文关联、横向对比、理解更新与图片附件维护 | Markdown / Obsidian / Notion 论文笔记 |
 | [`paper-tutor`](./paper-tutor/) | 面向初学者的学术论文无损伴读与逐段精讲，覆盖概览、术语、逐段译解、图表/表格拆解、公式推导与伪代码讲解 | 纯对话分节伴读（默认不落盘） |
-| [`research-project-init`](./research-project-init/) | 在本地主副本中初始化科研项目：写好基础 `AGENTS.md`（所有 Agent 共用的项目约定与本地执行规则），建好研究目录与索引；研究在 git 忽略目录中进行，效果好再抬升 | `AGENTS.md` 与研究目录索引 |
+| [`research-project-init`](./research-project-init/) | 在本地主副本中初始化科研项目：写好基础 `AGENTS.md`（所有 Agent 共用的项目约定与本地执行规则），建好研究目录与索引，配好 `.gitignore`；研究在 git 忽略目录中进行，效果好再抬升，主线代码按版本归档为只读快照 | `AGENTS.md`、研究目录索引与 `.gitignore` |
 | [`remote-cc-collab`](./remote-cc-collab/) | 给已初始化的科研项目补上与远端（云端）Claude Code 的协作内容：本地主副本 + GPU 服务器跑实验 + 远端 Claude Code 只做分析和改写代码，双方通过交接文件传递任务与结果 | 本地运行的同步脚本、远端精简 `CLAUDE.md`、交接目录，以及交给本地 Agent 合并的 `AGENTS.md` 协作一节 |
 
 各技能的完整触发条件、工作流与边界约束见对应目录的 `SKILL.md`。
@@ -60,10 +60,12 @@
 
 ### `research-project-init`
 
-- 在本地主副本（有 `.git`）里运行，只做基础配置：写 `AGENTS.md`、建研究目录与索引，确认 `<WORK>/`、`AGENTS.md`、`CLAUDE.md` 都被 git 忽略，并建议本地 `CLAUDE.md` 软链到 `AGENTS.md`；在没有 `.git` 的远端副本里不写文件。与远端 Claude Code 的协作内容交给 `remote-cc-collab`。
-- `AGENTS.md` 分「一、项目约定」（主线口径、实验口径、讨论与决策、目录与抬升、实现与验证，所有 Agent 都遵守）和「二、本地执行」（运行实验、GPU 服务器、git、阶段记录、论文，只由主副本上的 Agent 执行），只读的 Agent 读到全文也不会越界。
+- 在本地主副本（有 `.git`）里运行，只做基础配置：先配 `.gitignore`，再写 `AGENTS.md`、建研究目录与索引，并建议本地 `CLAUDE.md` 软链到 `AGENTS.md`；在没有 `.git` 的远端副本里不写文件。与远端 Claude Code 的协作内容交给 `remote-cc-collab`。
+- `.gitignore` 按模板只补缺的条目：研究目录、`legacy/`、`AGENTS.md`、`CLAUDE.md`、阶段记录、论文克隆，数据、权重与运行产物，Python 缓存，本机编辑器、Agent 配置与密钥；根目录下的目录带前导 `/`，以免误伤包内同名目录。补完用 `git check-ignore`、`git ls-files -ci`、`git status --ignored` 核对：该忽略的都命中、已跟踪却被忽略的文件交给用户决定、主线代码没有被误忽略。
+- 源码归档：主线代码按 `legacy/versions/v1`、`v2`…… 归档，每一版用 `git archive` 从某个提交生成到 `v<N>/src/`、只读，外面附 `README.md`、`VERSION.json`、`SHA256SUMS`，并在 `legacy/versions/README.md` 登记；规则写在 `AGENTS.md`「二」的「源码归档」一节。
+- `AGENTS.md` 分「一、项目约定」（主线口径、实验口径、讨论与决策、目录与抬升、实现与验证，所有 Agent 都遵守）和「二、本地执行」（运行实验、GPU 服务器、git、源码归档、阶段记录、论文，只由主副本上的 Agent 执行），只读的 Agent 读到全文也不会越界。
 - 已有 `AGENTS.md` 时不整体替换：先备份原文件（它不在 git 里），再按写法要点逐节归位、改写，并列出移动、改写、新增、删除的条目：只写规则和现状不写历史、主线口径不重复 README、服务器只记 SSH 别名、rsync 示例不带结尾斜杠等。
-- 模板：[`templates/AGENTS.md.tmpl`](./research-project-init/templates/AGENTS.md.tmpl)。
+- 模板：[`templates/AGENTS.md.tmpl`](./research-project-init/templates/AGENTS.md.tmpl)、[`templates/gitignore.tmpl`](./research-project-init/templates/gitignore.tmpl)。
 
 ### `remote-cc-collab`
 

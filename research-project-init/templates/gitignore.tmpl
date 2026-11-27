@@ -1,0 +1,51 @@
+# Local-only research files: rules, notes, research dir, source archives, paper clone
+/AGENTS.md
+/CLAUDE.md
+/log.md
+/<WORK>/
+/legacy/
+/paper/
+
+# Data, weights and run outputs (kept on the GPU server)
+/data/
+/datasets/
+/models/
+/checkpoints/
+/cache/
+/output/
+/outputs/
+/wandb/
+/runs/
+/lightning_logs/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.pkl
+
+# Python and tool caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.coverage
+/.venv/
+/venv/
+/build/
+/dist/
+
+# Local editor, agent and secret files
+/.claude/
+/.codex/
+/.agents/
+/.idea/
+/.vscode/
+.DS_Store
+.env
+.env.*
+!.env.example
+*.pem
+*.key

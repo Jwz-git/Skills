@@ -25,7 +25,7 @@ WORK=temp                                              # 被 git 忽略的研究
 SANITY=(pyproject.toml)                                # 本地根目录必须存在的文件，防止在错误目录运行（推送带 --delete）
 MAX_SIZE=50M                                           # 超过此大小的文件不推送（兜底挡住权重和数据）
 PROJECT_EXCLUDES=(                                     # 只留在本地、不进远端的路径（参照项目 .gitignore 修改）
-  --exclude=/paper/ --exclude=/plan.md --exclude=/log.md
+  --exclude=/paper/ --exclude=/legacy/ --exclude=/plan.md --exclude=/log.md
   --exclude=/data/ --exclude=/datasets/ --exclude=/models/ --exclude=/checkpoints/ --exclude=/cache/
   --exclude=/output/ --exclude=/outputs/
 )
